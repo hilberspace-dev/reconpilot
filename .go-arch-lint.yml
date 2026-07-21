@@ -1,0 +1,23 @@
+version: 3
+workdir: .
+components:
+  domain:         { in: internal/domain }
+  ingestion:      { in: internal/ingestion }
+  matching:       { in: internal/matching }
+  classification: { in: internal/classification }
+  invariants:     { in: internal/invariants }
+  engine:         { in: internal/engine }
+  generator:      { in: internal/generator }
+  reporting:      { in: internal/reporting }
+  store:          { in: internal/store }
+  cmd:            { in: cmd/** }
+deps:
+  ingestion:      { mayDependOn: [domain, store] }
+  matching:       { mayDependOn: [domain] }
+  classification: { mayDependOn: [domain, matching] }
+  invariants:     { mayDependOn: [domain, matching, classification] }
+  engine:         { mayDependOn: [domain, matching, classification, invariants] }
+  generator:      { mayDependOn: [domain] }
+  reporting:      { mayDependOn: [domain, engine] }
+  store:          { mayDependOn: [domain, matching, classification] }
+  cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, reporting, store] }
