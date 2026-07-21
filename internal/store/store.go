@@ -7,7 +7,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"reconpilot/internal/classification"
 	"reconpilot/internal/domain"
+	"reconpilot/internal/matching"
 )
 
 type Store struct{ pool *pgxpool.Pool }
@@ -79,6 +81,59 @@ func (s *Store) LoadTransactions(ctx context.Context) ([]domain.Transaction, err
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// SaveResult persists an engine run atomically. The schema's
+// UNIQUE(transaction_id) turns any double-membership bug into a hard DB
+// error here — defence in depth for invariant 2.
+func (s *Store) SaveResult(ctx context.Context, matches []matching.Match, discs []classification.Discrepancy) error {
+	return pgx.BeginFunc(ctx, s.pool, func(dbtx pgx.Tx) error {
+		// Recompute semantics: a run atomically replaces the previous run's
+		// results, so `recon run` is safely re-runnable — result-level
+		// idempotence mirroring invariant 4's ingest-level idempotence.
+		for _, q := range []string{
+			`DELETE FROM discrepancy`,
+			`DELETE FROM match_member`,
+			`DELETE FROM match_group`,
+			`UPDATE transaction SET status='unmatched'`,
+		} {
+			if _, err := dbtx.Exec(ctx, q); err != nil {
+				return err
+			}
+		}
+		groupIDs := make([]int64, len(matches))
+		for i, m := range matches {
+			if err := dbtx.QueryRow(ctx,
+				`INSERT INTO match_group (kind, score) VALUES ($1,$2) RETURNING id`,
+				m.Kind, m.ScoreBP).Scan(&groupIDs[i]); err != nil {
+				return err
+			}
+			for _, id := range m.TxIDs {
+				if _, err := dbtx.Exec(ctx,
+					`INSERT INTO match_member (match_group_id, transaction_id) VALUES ($1,$2)`,
+					groupIDs[i], id); err != nil {
+					return err
+				}
+				if _, err := dbtx.Exec(ctx,
+					`UPDATE transaction SET status='matched' WHERE id=$1`, id); err != nil {
+					return err
+				}
+			}
+		}
+		for _, d := range discs {
+			var gid *int64
+			if d.MatchIdx != nil {
+				gid = &groupIDs[*d.MatchIdx]
+			}
+			if _, err := dbtx.Exec(ctx,
+				`INSERT INTO discrepancy (transaction_id, match_group_id, type, amount_delta_kurus)
+				 VALUES ($1,$2,$3,$4)`,
+				d.TxID, gid, d.Type, d.DeltaKurus); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // insertRawMatch is a low-level helper used by tests and SaveResult.
