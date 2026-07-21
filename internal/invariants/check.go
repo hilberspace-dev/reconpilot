@@ -21,34 +21,49 @@ func Check(all []domain.Transaction, matches []matching.Match, discs []classific
 			}
 		}
 	}
-	classified := map[int64]int64{} // txID → Σ|delta|
+	type txDisc struct {
+		typ   string
+		delta int64
+	}
+	byTx := map[int64][]txDisc{}
 	for _, d := range discs {
 		if d.TxID != nil {
-			classified[*d.TxID] += abs(d.DeltaKurus)
+			byTx[*d.TxID] = append(byTx[*d.TxID], txDisc{d.Type, d.DeltaKurus})
 		}
 	}
 	for _, t := range all {
 		_, matched := seen[t.ID]
-		delta, hasDisc := classified[t.ID]
+		ds, hasDisc := byTx[t.ID]
 		if !matched && !hasDisc {
 			return fmt.Errorf("invariant 1 violated: transaction %d (%d kurus) is neither matched nor classified", t.ID, t.AmountKurus)
 		}
-		if !matched && hasDisc {
-			// Per-transaction form of invariant 3: a classified delta is
-			// either 0 (timing shifts and counterpart mirrors move no money)
-			// or exactly the transaction's own amount. Summed over all
-			// transactions this yields the report's total-difference equality.
-			if delta != 0 && delta != t.AmountKurus {
-				return fmt.Errorf("invariant 3 violated: tx %d amount %d but classified delta %d", t.ID, t.AmountKurus, delta)
+		if matched {
+			continue
+		}
+		// Type-aware form of invariant 3: every classified delta must obey
+		// its type's money semantics relative to the transaction's own
+		// amount. Summed over all transactions this yields the report's
+		// total-difference equality; per-type it also rejects overstated
+		// or understated deltas the report would otherwise repeat.
+		for _, d := range ds {
+			ok := false
+			switch d.typ {
+			case "timing":
+				ok = d.delta == 0 // shifted money is not missing money
+			case "partial", "commission":
+				// Shortfall strictly below the amount; 0 marks the delta-0
+				// counterpart mirror on the actual side.
+				ok = d.delta >= 0 && d.delta < t.AmountKurus
+			case "refund":
+				ok = d.delta == -t.AmountKurus // money moved back, full amount
+			case "missing", "duplicate", "unknown":
+				ok = d.delta == t.AmountKurus // the whole amount is unexplained
+			}
+			if !ok {
+				return fmt.Errorf("invariant 3 violated: tx %d amount %d classified %s with delta %d",
+					t.ID, t.AmountKurus, d.typ, d.delta)
 			}
 		}
 	}
 	return nil
-}
-
-func abs(v int64) int64 {
-	if v < 0 {
-		return -v
-	}
-	return v
 }

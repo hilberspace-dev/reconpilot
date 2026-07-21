@@ -104,4 +104,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	oss.terrastruct.com/d2 v0.5.1 // indirect
 	oss.terrastruct.com/util-go v0.0.0-20230604222829-11c3c60fec14 // indirect
+	pgregory.net/rapid v1.3.0 // indirect
 )

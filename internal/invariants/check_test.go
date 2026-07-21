@@ -51,3 +51,22 @@ func TestCheckFailsWhenDeltasDisagree(t *testing.T) {
 		t.Fatal("invariant 3 violation must fail")
 	}
 }
+
+// Invariant 3 is type-aware: a partial shortfall lives strictly below the
+// transaction amount; claiming the FULL amount as "partial" would overstate
+// the difference, and a zero-delta "missing" would understate it.
+func TestCheckTypeAwareDeltaSemantics(t *testing.T) {
+	all := []domain.Transaction{tx(1, 100)}
+	good := []classification.Discrepancy{{TxID: idp(1), Type: "partial", DeltaKurus: 60}}
+	if err := Check(all, nil, good); err != nil {
+		t.Fatalf("partial shortfall 60/100 must pass: %v", err)
+	}
+	over := []classification.Discrepancy{{TxID: idp(1), Type: "partial", DeltaKurus: 100}}
+	if err := Check(all, nil, over); err == nil {
+		t.Fatal("partial with delta == amount must fail (overstatement)")
+	}
+	zeroMissing := []classification.Discrepancy{{TxID: idp(1), Type: "missing", DeltaKurus: 0}}
+	if err := Check(all, nil, zeroMissing); err == nil {
+		t.Fatal("missing with delta 0 must fail (understatement)")
+	}
+}

@@ -1,0 +1,5 @@
+{
+  "total_tx": 12,
+  "matches": { "exact": 1, "tolerant": 1, "group": 1 },
+  "discrepancies": { "commission": 3, "timing": 2, "missing": 1, "unknown": 0 }
+}
