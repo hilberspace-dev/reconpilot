@@ -1,5 +1,17 @@
 version: 3
 workdir: .
+
+# Architecture boundaries apply to production code; tests may cross layers
+# (integration tests bootstrap containers, golden tests drive the full stack).
+excludeFiles:
+  - "^.*_test\\.go$"
+
+allow:
+  depOnAnyVendor: false
+
+vendors:
+  pgx: { in: github.com/jackc/pgx/** }
+
 components:
   domain:         { in: internal/domain }
   ingestion:      { in: internal/ingestion }
@@ -11,13 +23,14 @@ components:
   reporting:      { in: internal/reporting }
   store:          { in: internal/store }
   cmd:            { in: cmd/** }
+
 deps:
-  ingestion:      { mayDependOn: [domain, store] }
+  ingestion:      { mayDependOn: [domain, store] }  # ingest.go persists via store
   matching:       { mayDependOn: [domain] }
   classification: { mayDependOn: [domain, matching] }
   invariants:     { mayDependOn: [domain, matching, classification] }
   engine:         { mayDependOn: [domain, matching, classification, invariants] }
   generator:      { mayDependOn: [domain] }
   reporting:      { mayDependOn: [domain, engine] }
-  store:          { mayDependOn: [domain, matching, classification] }
+  store:          { mayDependOn: [domain, matching, classification], canUse: [pgx] }
   cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, reporting, store] }
