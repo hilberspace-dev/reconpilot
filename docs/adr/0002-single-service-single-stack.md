@@ -2,6 +2,9 @@
 
 **Status:** accepted · 2026-07-22
 
+**Amendment:** [ADR 0005](0005-stdlib-http-surface.md) adds the Phase 2 HTTP and observability
+surface inside the same binary; the single-service decision remains unchanged.
+
 ## Context
 
 Earlier drafts of this system had three deployables (JVM core, Python LLM
@@ -25,5 +28,5 @@ shell.
 
 - `go build ./...` produces everything; deploys are one file plus Postgres.
 - The pure core makes property-based testing cheap and deterministic.
-- REST/UI layers are deliberately deferred (Phase 2) — the CLI plus the
-  benchmark is what proves correctness.
+- REST/UI layers were deferred until the CLI and benchmark established the correctness core.
+  ADR 0005 later added that surface as another imperative shell around the same engine.

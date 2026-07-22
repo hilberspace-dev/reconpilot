@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23
+    environment:
+      POSTGRES_DB: reconpilot
+      POSTGRES_USER: reconpilot
+      POSTGRES_PASSWORD: reconpilot
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reconpilot -d reconpilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    image: reconpilot:local
+    environment:
+      DATABASE_URL: postgres://reconpilot:reconpilot@postgres:5432/reconpilot?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${RECONPILOT_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  seed:
+    build: .
+    image: reconpilot:local
+    command: ["demo", "-dir=/demo-data"]
+    environment:
+      DATABASE_URL: postgres://reconpilot:reconpilot@postgres:5432/reconpilot?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  postgres-data:

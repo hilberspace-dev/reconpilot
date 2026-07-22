@@ -10,9 +10,12 @@ import (
 	"reconpilot/internal/classification"
 	"reconpilot/internal/domain"
 	"reconpilot/internal/matching"
+	"reconpilot/internal/ports"
 )
 
 type Store struct{ pool *pgxpool.Pool }
+
+var _ ports.ReconciliationStore = (*Store)(nil)
 
 func Open(ctx context.Context, url string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, url)
@@ -23,6 +26,10 @@ func Open(ctx context.Context, url string) (*Store, error) {
 }
 
 func (s *Store) Close() { s.pool.Close() }
+
+// Ping verifies that PostgreSQL is reachable. The HTTP readiness endpoint
+// uses this rather than treating process liveness as database readiness.
+func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 func (s *Store) CreateBatch(ctx context.Context, source domain.SourceType, fileRef string) (int64, error) {
 	var id int64

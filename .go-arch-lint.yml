@@ -20,7 +20,9 @@ components:
   invariants:     { in: internal/invariants }
   engine:         { in: internal/engine }
   generator:      { in: internal/generator }
+  ports:          { in: internal/ports }
   reporting:      { in: internal/reporting }
+  server:         { in: internal/server }
   store:          { in: internal/store }
   cmd:            { in: cmd/** }
 
@@ -31,6 +33,13 @@ deps:
   invariants:     { mayDependOn: [domain, matching, classification] }
   engine:         { mayDependOn: [domain, matching, classification, invariants] }
   generator:      { mayDependOn: [domain] }
+  ports:          { mayDependOn: [domain, matching, classification] }
   reporting:      { mayDependOn: [domain, engine] }
-  store:          { mayDependOn: [domain, matching, classification], canUse: [pgx] }
-  cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, reporting, store] }
+  # go-arch-lint v1.16 resolves the concrete composition-root argument passed
+  # to server.New as a direct store dependency, even though the constructor
+  # accepts the neutral ports contract. Base import checks remain enabled.
+  server:
+    mayDependOn: [engine, ports, reporting]
+    deepScan: false
+  store:          { mayDependOn: [domain, matching, classification, ports], canUse: [pgx] }
+  cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, ports, reporting, server, store] }
