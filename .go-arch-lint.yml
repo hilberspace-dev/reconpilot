@@ -21,6 +21,7 @@ components:
   engine:         { in: internal/engine }
   generator:      { in: internal/generator }
   reporting:      { in: internal/reporting }
+  server:         { in: internal/server }
   store:          { in: internal/store }
   cmd:            { in: cmd/** }
 
@@ -32,5 +33,6 @@ deps:
   engine:         { mayDependOn: [domain, matching, classification, invariants] }
   generator:      { mayDependOn: [domain] }
   reporting:      { mayDependOn: [domain, engine] }
+  server:         { mayDependOn: [domain, matching, classification, engine, reporting] }
   store:          { mayDependOn: [domain, matching, classification], canUse: [pgx] }
-  cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, reporting, store] }
+  cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, reporting, server, store] }

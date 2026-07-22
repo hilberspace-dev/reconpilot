@@ -23,6 +23,6 @@ never depends on input ordering.
 ## Consequences
 
 - The worst case is capped at 2^20 nodes and in practice pruned far below.
-- Overflow degrades to an honest `unknown` — every invariant still holds,
+- Overflow degrades to an explicit `unknown` — every invariant still holds,
   and the report says what the engine could not do rather than guessing.
 - Larger-group matching is roadmap work, stated openly in the README.

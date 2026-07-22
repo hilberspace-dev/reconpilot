@@ -25,7 +25,7 @@ correctness-first:
 
 - A **three-stage matching chain** — exact (reference + amount + direction + ±3-day window),
   tolerant (±0.5%, bank lines only), and bounded many-to-one group matching for marketplace
-  payouts (payout = Σ orders − commission, ≤20 members, honest `unknown` fallback past the
+  payouts (payout = Σ orders − commission, ≤20 members, explicit `unknown` fallback past the
   bound).
 - **Seven discrepancy classes** for everything unmatched: commission, refund, partial payment,
   timing shift, duplicate, missing on counterparty side, unknown.
@@ -41,12 +41,20 @@ The claim is reproducible with one command (`go run ./cmd/benchmark`), against ~
 synthetic transactions with seven discrepancy types injected at known positions:
 
 - **7/7 injected discrepancy types detected**
-- **0 false matches** — measured by validating every produced match member-by-member against
-  the generator's intended-pairing ground truth, not asserted
+- **0 false matches** — every produced match was validated member-by-member against the
+  generator's intended-pairing ground truth
 - **Zero kuruş imbalance**, checked by the invariant suite inside the run
 - ~49,000 transactions reconciled in **~4 seconds** on a laptop
 
-## Honest methodology note
+## Operational surface
+
+The same binary now serves a versioned reconciliation endpoint, the HTML report, PostgreSQL-aware
+readiness and Prometheus-compatible metrics. `docker compose up --build -d` builds the non-root
+container, starts PostgreSQL, idempotently loads the golden dataset and makes the report available
+on localhost. Matching and classification remain in the pure engine; HTTP handlers only orchestrate
+the existing store and engine boundaries.
+
+## Benchmark scope
 
 The benchmark data is synthetic and the discrepancies are deliberately injected; the generator
 lives in the same repository and the run is seeded and reproducible. This project does not
@@ -76,10 +84,10 @@ farkların toplamı rapor edilen toplam farka eşittir, aynı dosyayı iki kez y
 olarak imkânsızdır.** Para uçtan uca tamsayı kuruştur; float yoktur.
 
 **Sonuç.** İddia tek komutla tekrarlanabilir (`go run ./cmd/benchmark`): ~50.000 sentetik
-işlem, bilinen konumlara enjekte edilmiş 7 uyuşmazlık tipi → **7/7 tip tespit, ölçülmüş 0
+işlem, bilinen konumlara enjekte edilmiş 7 uyuşmazlık tipi → **7/7 tip tespit, 0
 yanlış eşleşme, sıfır kuruş açığı**, dizüstü bilgisayarda ~4 saniye.
 
-**Dürüstlük notu.** Veri sentetiktir, uyuşmazlıklar bilerek enjekte edilmiştir; üretici kod
+**Benchmark sınırı.** Veri sentetiktir, uyuşmazlıklar bilerek enjekte edilmiştir; üretici kod
 aynı depodadır ve çalıştırma tohumlu (seeded) olduğu için birebir tekrarlanabilir. İddia
 "gerçek müşteri verisinde çalıştı" değil, "motorun davranışı doğrulanabilir ve bunu tek
 komutla kendiniz doğrulayabilirsiniz" iddiasıdır.

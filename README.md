@@ -7,8 +7,8 @@ across three independent sources — a **PSP transaction report**, a **bank stat
 **marketplace settlement (payout) report** — classifies every record it cannot match into one of
 seven discrepancy types, and proves that not a single kuruş went missing along the way.
 
-Correctness is not claimed in prose. It is enforced by **runtime invariants**, exercised by
-**property-based tests**, and demonstrated by a **reproducible benchmark anyone can run**.
+Correctness is enforced by **runtime invariants**, exercised by **property-based tests**, and
+demonstrated by a **reproducible benchmark anyone can run**.
 
 ## The claim
 
@@ -16,12 +16,11 @@ Correctness is not claimed in prose. It is enforced by **runtime invariants**, e
 > 7/7 types detected, 0 false matches, zero kuruş imbalance.
 > Run it yourself: `go run ./cmd/benchmark`**
 
-**Honesty rule.** The data is synthetic and the discrepancies are deliberately injected — the
-generator and the injection code live in this repository (`internal/generator`). The claim is
-*not* "this ran on real customer data"; it is **"the engine's behaviour is verifiable, and you
-can verify it yourself in one command."** Every match the engine produces is checked
-member-by-member against the generator's intended-pairing ground truth, so "0 false matches" is
-a **measured number**, not an assertion.
+**Benchmark boundary.** The data is synthetic and the discrepancies are deliberately injected; the
+generator and injection code live in this repository (`internal/generator`). The benchmark evaluates
+the engine's deterministic behaviour, not production performance on customer data. Every produced
+match is checked member-by-member against the generator's intended-pairing ground truth; the run
+above found 0 false matches.
 
 Output of `go run ./cmd/benchmark` on this machine (Go 1.26, seed 1):
 
@@ -49,12 +48,12 @@ RESULT: PASS — 7/7 injected types detected, 0 false matches, kuruş balance in
 The benchmark exits non-zero if any injected type goes undetected, any false match is produced,
 or any intended pair/group is left unmatched — CI runs it on every push.
 
-### Where to verify, independently of anything this README says
+### Verification
 
 - **CI** ([Actions](https://github.com/hilberspace-dev/reconpilot/actions)) — every push re-runs
   `go vet`, the full test suite (property-based + integration against a real PostgreSQL via
-  testcontainers), `go-arch-lint`, `govulncheck`, and a 20K-transaction benchmark with
-  ground-truth validation.
+  testcontainers), `go-arch-lint`, `govulncheck`, a seeded Compose endpoint smoke test, and a
+  20K-transaction benchmark with ground-truth validation.
 - **Locally** — `go run ./cmd/benchmark` is seeded and deterministic; the same command, the
   same numbers, on any machine.
 - **History** — the commit log is incremental (one component per commit), and every
@@ -76,7 +75,37 @@ deliberate defence-in-depth: application logic can be refactored incorrectly; a 
 constraint cannot be bypassed by a code path that forgot about it
 ([ADR 0004](docs/adr/0004-schema-level-invariants.md)).
 
-## Quickstart
+## One-command service demo
+
+Docker Compose builds the static API image, starts PostgreSQL, loads the golden dataset, runs the
+first reconciliation, and waits for the API readiness check:
+
+```sh
+docker compose up --build -d
+```
+
+The service binds to loopback by default at `http://localhost:8080`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/healthz` | Process liveness |
+| `GET` | `/readyz` | PostgreSQL readiness |
+| `POST` | `/api/v1/reconciliation-runs` | Recompute, check all invariants, persist, return JSON summary |
+| `GET` | `/report` | Server-rendered HTML report |
+| `GET` | `/metrics` | Prometheus-compatible metrics |
+
+```sh
+curl http://localhost:8080/readyz
+curl -X POST http://localhost:8080/api/v1/reconciliation-runs
+curl http://localhost:8080/metrics
+# Open http://localhost:8080/report in a browser
+```
+
+The Compose credentials are local-demo defaults, the API is intentionally unauthenticated, and the
+PostgreSQL data lives in a named volume. Keep the demo bound to loopback; add authentication,
+authorization, secret management and TLS before exposing it outside a local machine.
+
+## CLI quickstart
 
 Requirements: Go 1.26+, Docker.
 
@@ -121,10 +150,12 @@ go tool go-arch-lint check       # architecture boundaries, pinned via the go.mo
 ```
         CSV (psp / bank / marketplace)
                     │
-                ingestion          poison-row rejection, sha256 dedup_key
+      ingestion          poison-row rejection, sha256 dedup_key
                     │
                   store            PostgreSQL: schema-level invariants
-                    │
+                    │                         ┌──────────────────────────────┐
+                    ├─────────────────────────┤ REST · HTML · health · metrics │
+                    │                         └──────────────────────────────┘
                  engine.Run ──────────────── pure, in-memory, deterministic
                     │
         ┌───────────┼───────────────┐
@@ -145,7 +176,7 @@ go tool go-arch-lint check       # architecture boundaries, pinned via the go.mo
      group-matched, never tolerant-matched);
   3. `group` — many-to-one (payout = Σ orders − commission), bounded subset search: candidates
      narrowed by counterparty + 14-day window, group size capped at ≤20 members; anything past
-     the bound degrades honestly to `unknown`
+     the bound degrades explicitly to `unknown`
      ([ADR 0003](docs/adr/0003-bounded-group-matching.md)).
 - **Classification — 7 types:** commission deduction · refund · partial payment · timing shift ·
   duplicate record · missing on counterparty side · unknown difference.
@@ -168,9 +199,10 @@ idempotency come from the store, not the adapter.
 
 ## Roadmap
 
-- **Phase 2 — visibility layer:** server-rendered report UI in the same service (stdlib
-  `html/template`), REST API, PSP sandbox adapter as a liveness proof, Prometheus `/metrics`,
-  live demo deploy (single binary → one small VPS).
+- **Phase 2 foundation — shipped:** stdlib REST API, server-rendered report, liveness/readiness,
+  Prometheus-compatible `/metrics`, graceful shutdown, minimal container image, and a one-command
+  PostgreSQL + seeded demo stack.
+- **Next visibility work:** PSP sandbox adapter as an integration proof and a small operator dashboard.
 - **Phase 3 — AI assist (optional, feature-flagged):** LLM-generated plain-language discrepancy
   narratives and resolution suggestions via `anthropic-sdk-go`, strictly human-in-the-loop — the
   correctness claim never depends on a model.
@@ -182,4 +214,5 @@ idempotency come from the store, not the adapter.
 - [ADR 0002 — One Go service, one static binary, no framework](docs/adr/0002-single-service-single-stack.md)
 - [ADR 0003 — Bounded many-to-one matching with an explicit fallback](docs/adr/0003-bounded-group-matching.md)
 - [ADR 0004 — Invariants enforced at the schema level](docs/adr/0004-schema-level-invariants.md)
+- [ADR 0005 — Stdlib HTTP surface and bounded observability](docs/adr/0005-stdlib-http-surface.md)
 - [Case study](docs/case-study.md)

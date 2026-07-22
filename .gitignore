@@ -2,3 +2,4 @@
 /benchmark.exe
 *.out
 /reports/
+/.cache/
