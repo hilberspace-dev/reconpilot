@@ -11,22 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"reconpilot/internal/classification"
-	"reconpilot/internal/domain"
 	"reconpilot/internal/engine"
-	"reconpilot/internal/matching"
+	"reconpilot/internal/ports"
 	"reconpilot/internal/reporting"
 )
 
-// Store is the persistence boundary required by the HTTP service.
-type Store interface {
-	Ping(context.Context) error
-	LoadTransactions(context.Context) ([]domain.Transaction, error)
-	SaveResult(context.Context, []matching.Match, []classification.Discrepancy) error
-}
-
 type handler struct {
-	store   Store
+	store   ports.ReconciliationStore
 	logger  *slog.Logger
 	metrics *metrics
 	runMu   sync.Mutex
@@ -34,7 +25,7 @@ type handler struct {
 
 // New returns the complete HTTP surface. Method-aware ServeMux patterns make
 // unsupported methods return 405 without custom routing code.
-func New(store Store, logger *slog.Logger) http.Handler {
+func New(store ports.ReconciliationStore, logger *slog.Logger) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}

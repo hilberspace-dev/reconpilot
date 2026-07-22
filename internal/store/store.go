@@ -10,9 +10,12 @@ import (
 	"reconpilot/internal/classification"
 	"reconpilot/internal/domain"
 	"reconpilot/internal/matching"
+	"reconpilot/internal/ports"
 )
 
 type Store struct{ pool *pgxpool.Pool }
+
+var _ ports.ReconciliationStore = (*Store)(nil)
 
 func Open(ctx context.Context, url string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, url)

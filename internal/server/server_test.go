@@ -14,6 +14,7 @@ import (
 	"reconpilot/internal/classification"
 	"reconpilot/internal/domain"
 	"reconpilot/internal/matching"
+	"reconpilot/internal/ports"
 )
 
 type fakeStore struct {
@@ -57,7 +58,7 @@ func (f *fakeStore) SaveResult(context.Context, []matching.Match, []classificati
 	return nil
 }
 
-func testHandler(s Store) http.Handler {
+func testHandler(s ports.ReconciliationStore) http.Handler {
 	return New(s, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
