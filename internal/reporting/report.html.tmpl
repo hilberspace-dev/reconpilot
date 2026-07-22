@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>ReconPilot report</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:2rem;color:#111}
+table{border-collapse:collapse;margin:1rem 0}td,th{border:1px solid #ccc;padding:.4rem .8rem;text-align:right}
+th:first-child,td:first-child{text-align:left}.ok{color:#0a7d33}.bad{color:#b3261e}
+</style></head><body>
+<h1>ReconPilot reconciliation report</h1>
+<p>{{.TotalTx}} transactions &middot; match rate <strong>{{.MatchRatePct}}%</strong></p>
+<h2>Matches</h2>
+<table><tr><th>kind</th><th>count</th></tr>
+{{range .MatchRows}}<tr><td>{{.Kind}}</td><td>{{.Count}}</td></tr>{{end}}</table>
+<h2>Discrepancies</h2>
+<table><tr><th>type</th><th>count</th><th>total (TRY)</th></tr>
+{{range .DiscRows}}<tr><td>{{.Type}}</td><td>{{.Count}}</td><td>{{.TotalTRY}}</td></tr>{{end}}</table>
+<h2>Ageing (unresolved)</h2>
+<table><tr><th>bucket</th><th>count</th></tr>
+{{range .AgeRows}}<tr><td>{{.Bucket}}</td><td>{{.Count}}</td></tr>{{end}}</table>
+</body></html>
