@@ -79,3 +79,20 @@ func TestClassifySevenTypes(t *testing.T) {
 		}
 	}
 }
+
+// Regression (found by the benchmark): a refund debit whose credit leg sits
+// on the SAME side with the same ref+amount must classify as refund, not as
+// a duplicate of that credit leg — duplicates require equal direction.
+func TestRefundNotMistakenForDuplicateOfItsCreditLeg(t *testing.T) {
+	all := []domain.Transaction{
+		tx(1, domain.SourcePSP, "ORD-R", 500, 1, domain.DirCredit),
+		tx(2, domain.SourceBank, "ORD-R", 500, 2, domain.DirCredit),
+		tx(3, domain.SourceBank, "ORD-R", 500, 4, domain.DirDebit), // refund leg
+	}
+	// Pretend 1 and 2 matched exactly; only the refund is leftover.
+	pool := matching.SplitPool([]domain.Transaction{all[2]})
+	ds := Classify(pool, nil, nil, all)
+	if len(ds) != 1 || ds[0].Type != "refund" || ds[0].DeltaKurus != -500 {
+		t.Fatalf("want refund(-500), got %+v", ds)
+	}
+}

@@ -49,6 +49,9 @@ func Generate(seed int64, n int) ([]domain.Transaction, GroundTruth) {
 	seller := func() string { return sellers[rng.IntN(len(sellers))] }
 	day := func() int { return rng.IntN(30) }
 
+	// Budgets are scaled so the OUTPUT row count lands near n (injection
+	// shapes add/remove rows; unscaled, output would be ~90% of n).
+	n = n * 110 / 100
 	pairBudget := n * 70 / 100 / 2 // each type injected at i%100 slots ⇒ ~1% per type
 	for i := 0; i < pairBudget; i++ {
 		ref, cp, amt, d := fmt.Sprintf("ORD-%06d", i), seller(), amount(), day()

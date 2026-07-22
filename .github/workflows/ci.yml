@@ -12,3 +12,4 @@ jobs:
       - run: go test ./... -count=1
       - run: go tool go-arch-lint check
       - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - run: go run ./cmd/benchmark -n 20000

@@ -50,9 +50,12 @@ func Classify(leftover matching.Pool, matches []matching.Match, groupCandidates 
 
 	classifyOne := func(t domain.Transaction) Discrepancy {
 		id := t.ID
-		// duplicate: an earlier identical row on the same side exists.
+		// duplicate: an earlier identical row on the same side exists. Same
+		// direction is required — a bank debit (refund) is NOT a duplicate
+		// of its own credit leg.
 		for _, o := range all {
-			if o.ID < t.ID && o.Source == t.Source && o.ExternalRef == t.ExternalRef && o.AmountKurus == t.AmountKurus {
+			if o.ID < t.ID && o.Source == t.Source && o.Direction == t.Direction &&
+				o.ExternalRef == t.ExternalRef && o.AmountKurus == t.AmountKurus {
 				return Discrepancy{TxID: &id, Type: "duplicate", DeltaKurus: t.AmountKurus}
 			}
 		}
