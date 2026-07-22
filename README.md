@@ -1,5 +1,7 @@
 # ReconPilot
 
+[![CI](https://github.com/hilberspace-dev/reconpilot/actions/workflows/ci.yml/badge.svg)](https://github.com/hilberspace-dev/reconpilot/actions/workflows/ci.yml)
+
 A deterministic payment reconciliation engine for e-commerce: it matches transaction records
 across three independent sources — a **PSP transaction report**, a **bank statement**, and a
 **marketplace settlement (payout) report** — classifies every record it cannot match into one of
@@ -47,6 +49,17 @@ RESULT: PASS — 7/7 injected types detected, 0 false matches, kuruş balance in
 The benchmark exits non-zero if any injected type goes undetected, any false match is produced,
 or any intended pair/group is left unmatched — CI runs it on every push.
 
+### Where to verify, independently of anything this README says
+
+- **CI** ([Actions](https://github.com/hilberspace-dev/reconpilot/actions)) — every push re-runs
+  `go vet`, the full test suite (property-based + integration against a real PostgreSQL via
+  testcontainers), `go-arch-lint`, `govulncheck`, and a 20K-transaction benchmark with
+  ground-truth validation.
+- **Locally** — `go run ./cmd/benchmark` is seeded and deterministic; the same command, the
+  same numbers, on any machine.
+- **History** — the commit log is incremental (one component per commit), and every
+  load-bearing decision has an [ADR](docs/adr/).
+
 ## The four invariants
 
 A violation of any of these is a hard failure — the run aborts, never a warning.
@@ -84,6 +97,11 @@ go run ./cmd/recon run
 # 4. Render the report
 go run ./cmd/recon report        # writes reports/report.html + reports/discrepancies.csv
 ```
+
+The report rendered from the golden dataset — 12 transactions, 3 matches (one per matcher),
+6 classified discrepancies, zero `unknown`:
+
+![Reconciliation report rendered from the golden dataset](docs/report-screenshot.png)
 
 To reproduce the 50K claim, no database is needed — the benchmark is pure in-memory:
 
