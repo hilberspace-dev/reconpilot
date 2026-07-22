@@ -4,11 +4,10 @@
 
 ## Context
 
-The entire purpose of this engine is to prove that money balances to the
-kuruş across three independent sources. Binary floating point cannot
-represent 0.10 exactly; accumulated rounding drift across 50K transactions
-would make the central claim — "zero kuruş imbalance" — unprovable, and any
-observed imbalance indistinguishable from a real reconciliation bug.
+The engine must represent monetary amounts and discrepancy deltas exactly
+across three independent sources. Binary floating point cannot represent
+0.10 exactly; accumulated rounding drift across 50K transactions would make
+a one-kuruş difference indistinguishable from a reconciliation defect.
 
 ## Decision
 

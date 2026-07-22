@@ -5,15 +5,16 @@
 A deterministic payment reconciliation engine for e-commerce: it matches transaction records
 across three independent sources — a **PSP transaction report**, a **bank statement**, and a
 **marketplace settlement (payout) report** — classifies every record it cannot match into one of
-seven discrepancy types, and proves that not a single kuruş went missing along the way.
+seven discrepancy types, and refuses to return a result if any input record is left unplaced.
 
-Correctness is enforced by **runtime invariants**, exercised by **property-based tests**, and
-demonstrated by a **reproducible benchmark anyone can run**.
+Correctness is enforced at two boundaries: three **runtime invariants** inside the engine and an
+idempotent-ingestion guarantee in **PostgreSQL**. Both are exercised by automated tests, while a
+**reproducible benchmark anyone can run** validates match integrity against known ground truth.
 
 ## The claim
 
 > **50,000 transactions · 3 sources · 7 deliberately injected discrepancy types →
-> 7/7 types detected, 0 false matches, zero kuruş imbalance.
+> 7/7 types detected, 0 false matches, 0 intended pairs/groups missed.
 > Run it yourself: `go run ./cmd/benchmark`**
 
 **Benchmark boundary.** The data is synthetic and the discrepancies are deliberately injected; the
@@ -40,9 +41,9 @@ unknown             193        193  ok
 
 clean books: pairs=17706 groups=1650 — matches produced: 20128
 false matches: 0 — intended pairs/groups not fully matched: 0
-invariants: all 4 PASSED (checked inside engine.Run)
+runtime invariants: 3/3 PASSED (checked inside engine.Run)
 
-RESULT: PASS — 7/7 injected types detected, 0 false matches, kuruş balance intact
+RESULT: PASS — 7/7 injected types detected, 0 false matches, 0 intended pairs/groups missed
 ```
 
 The benchmark exits non-zero if any injected type goes undetected, any false match is produced,
@@ -59,21 +60,22 @@ or any intended pair/group is left unmatched — CI runs it on every push.
 - **History** — the commit log is incremental (one component per commit), and every
   load-bearing decision has an [ADR](docs/adr/).
 
-## The four invariants
+## The four correctness guarantees
 
-A violation of any of these is a hard failure — the run aborts, never a warning.
+The first three are checked inside every engine run and abort it on violation. The fourth belongs to
+the ingestion boundary and is enforced by PostgreSQL, with a real-database integration test.
 
-| # | Invariant | Enforced by |
+| # | Guarantee | Enforced by |
 |---|---|---|
-| 1 | Every kuruş is either inside a match or inside a classified discrepancy — money is never lost | runtime assertion + property test |
+| 1 | Every input transaction is either in a match or has a classified discrepancy — no record silently falls out of the result | runtime assertion + property test |
 | 2 | No transaction belongs to more than one match group — no double reconciliation | **DB: `UNIQUE(transaction_id)` on `match_member`** + assertion |
-| 3 | Σ(classified discrepancy deltas) equals the reported total difference — the report cannot lie | runtime assertion + property test |
+| 3 | Every transaction-level discrepancy delta obeys its type's money semantics (for example, timing = 0, refund = −full amount, missing = full amount) | runtime assertion + unit/property tests |
 | 4 | Re-ingesting the same file is a no-op | **DB: `UNIQUE(dedup_key)`** + integration test |
 
-Invariants 2 and 4 are guaranteed at the **schema** level in addition to the application level —
-deliberate defence-in-depth: application logic can be refactored incorrectly; a database
-constraint cannot be bypassed by a code path that forgot about it
-([ADR 0004](docs/adr/0004-schema-level-invariants.md)).
+Guarantee 2 is checked by the engine and backed by a **schema** constraint; guarantee 4 is a
+schema-level ingestion property rather than an `engine.Run` check. The schema also rejects an
+ownerless discrepancy row. These boundaries and their integration tests are documented in
+[ADR 0004](docs/adr/0004-schema-level-invariants.md).
 
 ## One-command service demo
 
@@ -90,7 +92,7 @@ The service binds to loopback by default at `http://localhost:8080`:
 |---|---|---|
 | `GET` | `/healthz` | Process liveness |
 | `GET` | `/readyz` | PostgreSQL readiness |
-| `POST` | `/api/v1/reconciliation-runs` | Recompute, check all invariants, persist, return JSON summary |
+| `POST` | `/api/v1/reconciliation-runs` | Recompute, check runtime invariants, persist, return JSON summary |
 | `GET` | `/report` | Server-rendered HTML report |
 | `GET` | `/metrics` | Prometheus-compatible metrics |
 
@@ -164,7 +166,7 @@ go tool go-arch-lint check       # architecture boundaries, pinned via the go.mo
                     │
              classification        7 discrepancy types
                     │
-              invariants.Check     all 4, hard-failing
+              invariants.Check     runtime checks 1–3, hard-failing
                     │
                 reporting          HTML + CSV, ageing buckets
 ```

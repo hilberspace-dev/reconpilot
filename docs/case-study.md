@@ -29,10 +29,11 @@ correctness-first:
   bound).
 - **Seven discrepancy classes** for everything unmatched: commission, refund, partial payment,
   timing shift, duplicate, missing on counterparty side, unknown.
-- **Four invariants** that turn "the books balance" from a hope into a checked property on
-  every run: no kuruş unaccounted for; no transaction in two matches (database `UNIQUE`, not
-  just code); classified deltas sum exactly to the reported difference; re-ingesting a file is
-  a no-op. A violation aborts the run — the engine cannot produce a wrong report silently.
+- **Three runtime invariants** on every run: every input transaction is matched or classified;
+  no transaction appears in two match groups; and every transaction-level discrepancy delta obeys
+  its type's money semantics. A violation aborts the run rather than returning a partial result.
+- **A fourth, ingestion-level guarantee:** re-ingesting a file is a no-op, enforced by PostgreSQL
+  `UNIQUE(dedup_key)` and verified by a real-database integration test.
 - **Money is integer kuruş end-to-end.** No floats, no epsilons, no rounding drift.
 
 ## The result
@@ -43,7 +44,7 @@ synthetic transactions with seven discrepancy types injected at known positions:
 - **7/7 injected discrepancy types detected**
 - **0 false matches** — every produced match was validated member-by-member against the
   generator's intended-pairing ground truth
-- **Zero kuruş imbalance**, checked by the invariant suite inside the run
+- **0 intended pairs/groups missed**, with every input record placed in a match or discrepancy
 - ~49,000 transactions reconciled in **~4 seconds** on a laptop
 
 ## Operational surface
@@ -60,7 +61,8 @@ The benchmark data is synthetic and the discrepancies are deliberately injected;
 lives in the same repository and the run is seeded and reproducible. This project does not
 claim production mileage on real customer data. It claims something a prospective client can
 verify in one command: the engine detects what it says it detects, produces no false matches
-on the adversarial cases it was designed for, and structurally cannot lose money in the books.
+on the generated ground truth, misses no intended clean pairing, and refuses to return a result
+if an input record is unplaced or a transaction-level discrepancy delta violates its type rules.
 
 ---
 
@@ -76,16 +78,18 @@ kapanmış görünür ama yanlıştır) ve **kaybolan bakiye** (hiçbir filtreye
 silinen kayıtlar).
 
 **Yaklaşım.** ReconPilot, Go ile yazılmış deterministik bir mutabakat motorudur: üç aşamalı
-eşleştirme zinciri (kesin → toleranslı → sınırlandırılmış çoktan-bire grup eşleme), yedi
-uyuşmazlık sınıfı ve her çalışmada zorunlu dört değişmez (invariant) — hiçbir kuruş açıkta
-kalamaz, hiçbir işlem iki eşleşmede olamaz (veritabanı `UNIQUE` kısıtı), sınıflandırılmış
-farkların toplamı rapor edilen toplam farka eşittir, aynı dosyayı iki kez yüklemek etkisizdir.
-İhlal durumunda motor rapor üretmez, hata verir: **sessizce yanlış rapor üretmek yapısal
-olarak imkânsızdır.** Para uçtan uca tamsayı kuruştur; float yoktur.
+eşleştirme zinciri (kesin → toleranslı → sınırlandırılmış çoktan-bire grup eşleme) ve yedi
+uyuşmazlık sınıfı kullanır. Her çalışmada üç değişmez zorlanır: her girdi işlemi eşleştirilir
+veya sınıflandırılır; hiçbir işlem iki eşleşme grubunda yer alamaz; işlem bazındaki her fark
+tutarı kendi sınıfının para semantiğine uyar. İhlal durumunda motor kısmi sonuç döndürmez.
+Dördüncü, içe aktarma düzeyindeki garanti aynı dosyanın yeniden yüklenmesini etkisiz kılar;
+PostgreSQL `UNIQUE(dedup_key)` ve gerçek veritabanı entegrasyon testiyle doğrulanır. Para uçtan
+uca tamsayı kuruştur; float yoktur.
 
 **Sonuç.** İddia tek komutla tekrarlanabilir (`go run ./cmd/benchmark`): ~50.000 sentetik
-işlem, bilinen konumlara enjekte edilmiş 7 uyuşmazlık tipi → **7/7 tip tespit, 0
-yanlış eşleşme, sıfır kuruş açığı**, dizüstü bilgisayarda ~4 saniye.
+işlem, bilinen konumlara enjekte edilmiş 7 uyuşmazlık tipi → **7/7 tip tespit, 0 yanlış
+eşleşme, 0 kaçırılmış amaçlanan eşleşme/grup**; her girdi kaydı bir eşleşmeye veya uyuşmazlığa
+yerleştirilmiş halde, dizüstü bilgisayarda ~4 saniye.
 
 **Benchmark sınırı.** Veri sentetiktir, uyuşmazlıklar bilerek enjekte edilmiştir; üretici kod
 aynı depodadır ve çalıştırma tohumlu (seeded) olduğu için birebir tekrarlanabilir. İddia

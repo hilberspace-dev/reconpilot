@@ -40,11 +40,9 @@ func Check(all []domain.Transaction, matches []matching.Match, discs []classific
 		if matched {
 			continue
 		}
-		// Type-aware form of invariant 3: every classified delta must obey
-		// its type's money semantics relative to the transaction's own
-		// amount. Summed over all transactions this yields the report's
-		// total-difference equality; per-type it also rejects overstated
-		// or understated deltas the report would otherwise repeat.
+		// Type-aware form of invariant 3: every transaction-level delta must
+		// obey its type's money semantics relative to the transaction's own
+		// amount.
 		for _, d := range ds {
 			ok := false
 			switch d.typ {

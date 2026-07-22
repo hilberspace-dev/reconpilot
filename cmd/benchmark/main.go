@@ -80,10 +80,10 @@ func main() {
 	fmt.Printf("\nclean books: pairs=%d groups=%d — matches produced: %d\n",
 		gt.CleanPairs, gt.CleanGroups, len(out.Matches))
 	fmt.Printf("false matches: %d — intended pairs/groups not fully matched: %d\n", falseMatches, missed)
-	fmt.Printf("invariants: all 4 PASSED (checked inside engine.Run)\n")
+	fmt.Printf("runtime invariants: 3/3 PASSED (checked inside engine.Run)\n")
 	if failed || falseMatches > 0 || missed > 0 {
 		fmt.Println("\nRESULT: FAIL — detection or match integrity fell short (see above)")
 		os.Exit(1)
 	}
-	fmt.Println("\nRESULT: PASS — 7/7 injected types detected, 0 false matches, kuruş balance intact")
+	fmt.Println("\nRESULT: PASS — 7/7 injected types detected, 0 false matches, 0 intended pairs/groups missed")
 }
