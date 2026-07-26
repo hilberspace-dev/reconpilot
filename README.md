@@ -15,7 +15,9 @@ idempotent-ingestion guarantee in **PostgreSQL**. Both are exercised by automate
 
 > **50,000 transactions · 3 sources · 7 deliberately injected discrepancy types →
 > 7/7 types detected, 0 false matches, 0 intended pairs/groups missed.
-> Run it yourself: `go run ./cmd/benchmark`**
+> Run it yourself: `go run ./cmd/benchmark`
+> — or read it in a browser: `docker compose up -d verify` →
+> [localhost:8081](http://localhost:8081)**
 
 **Benchmark boundary.** The data is synthetic and the discrepancies are deliberately injected; the
 generator and injection code live in this repository (`internal/generator`). The benchmark evaluates
@@ -57,6 +59,21 @@ or any intended pair/group is left unmatched — CI runs it on every push.
   20K-transaction benchmark with ground-truth validation.
 - **Locally** — `go run ./cmd/benchmark` is seeded and deterministic; the same command, the
   same numbers, on any machine.
+- **In a browser** — the same scored run, rendered as a single self-contained page. It needs no
+  database and no seeded book: the panel generates the synthetic book, runs the engine and scores
+  the outcome in-process.
+
+  ```sh
+  docker compose up -d verify          # then open http://localhost:8081
+  go run ./cmd/verify                  # or write verification.html locally
+  go run ./cmd/verify -seed 42         # a different book, to show the result is not seed-specific
+  ```
+
+  The panel shows injected-versus-detected per discrepancy type, states inline why detection
+  legitimately exceeds injection for `commission`, `partial` and `timing`, and reports false
+  matches and unmatched intended pairs as measured figures. In file mode it exits non-zero on the
+  same conditions as the benchmark, so it works as a gate too. Both surfaces score through
+  `internal/verification`, so the printed proof and the rendered proof cannot drift apart.
 - **History** — the commit log is incremental (one component per commit), and every
   load-bearing decision has an [ADR](docs/adr/).
 
@@ -86,7 +103,11 @@ first reconciliation, and waits for the API readiness check:
 docker compose up --build -d
 ```
 
-The service binds to loopback by default at `http://localhost:8080`:
+The stack also carries a `verify` service on `http://localhost:8081`, which serves the benchmark
+verification panel described above. It depends on nothing else — bring up only that one with
+`docker compose up -d verify` if all you want is to check the claim.
+
+The API service binds to loopback by default at `http://localhost:8080`:
 
 | Method | Path | Purpose |
 |---|---|---|

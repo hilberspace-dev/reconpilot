@@ -6,10 +6,12 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/recon ./cmd/recon
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/verify ./cmd/verify
 
 FROM scratch AS runtime
 
 COPY --from=build /out/recon /recon
+COPY --from=build /out/verify /verify
 COPY --from=build /src/testdata/golden /demo-data
 USER 65532:65532
 EXPOSE 8080

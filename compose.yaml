@@ -27,6 +27,18 @@ services:
       - "127.0.0.1:${RECONPILOT_PORT:-8080}:8080"
     restart: unless-stopped
 
+  # The verification panel needs no database and no seeded book: it generates
+  # the synthetic book, runs the engine and scores the result in-process, then
+  # serves the outcome as a single self-contained page.
+  verify:
+    build: .
+    image: reconpilot:local
+    entrypoint: ["/verify"]
+    command: ["-listen=:8081", "-n=50000", "-seed=1"]
+    ports:
+      - "127.0.0.1:${RECONPILOT_VERIFY_PORT:-8081}:8081"
+    restart: unless-stopped
+
   seed:
     build: .
     image: reconpilot:local

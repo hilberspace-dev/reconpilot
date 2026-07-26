@@ -24,6 +24,7 @@ components:
   reporting:      { in: internal/reporting }
   server:         { in: internal/server }
   store:          { in: internal/store }
+  verification:   { in: internal/verification }
   cmd:            { in: cmd/** }
 
 deps:
@@ -42,4 +43,8 @@ deps:
     mayDependOn: [engine, ports, reporting]
     deepScan: false
   store:          { mayDependOn: [domain, matching, classification, ports], canUse: [pgx] }
-  cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, ports, reporting, server, store] }
+  # verification scores an engine run against generator ground truth. It is
+  # deliberately outside server/reporting: those must not reach the generator,
+  # because a served page must never be able to fabricate its own evidence.
+  verification:   { mayDependOn: [engine, generator] }
+  cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, ports, reporting, server, store, verification] }

@@ -1,0 +1,123 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ReconPilot — verification</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--ink:#12181f;--muted:#5a6673;--line:#dfe4ea;--bg:#f7f8fa;--ok:#0a6b3d;--okbg:#e6f4ec;--bad:#8a1c1c;--badbg:#fbeaea}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 20px 64px;background:var(--bg);color:var(--ink);
+font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:860px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 28px}
+.verdict{border-radius:10px;padding:18px 20px;margin:0 0 28px;border:1px solid}
+.verdict.ok{background:var(--okbg);border-color:#bcdccb;color:var(--ok)}
+.verdict.bad{background:var(--badbg);border-color:#e5bcbc;color:var(--bad)}
+.verdict b{font-size:19px;display:block;margin-bottom:4px}
+.claims{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:0 0 30px}
+.claim{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.claim .n{font-size:24px;font-weight:650;letter-spacing:-.01em}
+.claim .n.ok{color:var(--ok)}
+.claim .n.bad{color:var(--bad)}
+.claim .t{color:var(--muted);font-size:14px;margin-top:2px}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+margin:32px 0 10px;font-weight:650}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);
+border-radius:10px;overflow:hidden}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);font-size:15px}
+th{background:#fbfcfd;font-weight:600;color:var(--muted);font-size:13px;
+text-transform:uppercase;letter-spacing:.04em}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.note{color:var(--muted);font-size:13.5px;line-height:1.45}
+.flag{display:inline-block;font-size:12px;font-weight:650;padding:1px 7px;border-radius:20px}
+.flag.ok{background:var(--okbg);color:var(--ok)}
+.flag.bad{background:var(--badbg);color:var(--bad)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin:0;background:#fff;
+border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+dt{color:var(--muted);font-size:14px}
+dd{margin:0;font-variant-numeric:tabular-nums}
+.boundary{margin-top:32px;border-left:3px solid var(--line);padding:2px 0 2px 16px;
+color:var(--muted);font-size:14.5px}
+.boundary b{color:var(--ink)}
+code{font:13.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#eef1f4;
+padding:1px 5px;border-radius:4px}
+</style>
+<main>
+<h1>ReconPilot — verification run</h1>
+<p class="sub">Reconciliation over a seeded synthetic book, scored against the generator's ground
+truth. Every figure below is measured by this run, not read from a file.</p>
+
+{{if .Passed}}
+<div class="verdict ok">
+  <b>PASS</b>
+  All injected discrepancy types were detected, no false match was produced, and every intended
+  pair and group was matched in full.
+</div>
+{{else}}
+<div class="verdict bad">
+  <b>FAIL</b>
+  At least one claim did not hold on this run. The rows marked below are the ones that fell short.
+</div>
+{{end}}
+
+<div class="claims">
+  <div class="claim">
+    <div class="n {{if .TypesOK}}ok{{else}}bad{{end}}">{{.DetectedTypes}}/{{.InjectedTypes}}</div>
+    <div class="t">injected discrepancy types detected</div>
+  </div>
+  <div class="claim">
+    <div class="n {{if eq .FalseMatches 0}}ok{{else}}bad{{end}}">{{.FalseMatches}}</div>
+    <div class="t">false matches</div>
+  </div>
+  <div class="claim">
+    <div class="n {{if eq .MissedIntended 0}}ok{{else}}bad{{end}}">{{.MissedIntended}}</div>
+    <div class="t">intended pairs or groups not fully matched</div>
+  </div>
+</div>
+
+<h2>Detection by discrepancy type</h2>
+<table>
+  <tr><th>Type</th><th class="num">Injected</th><th class="num">Detected</th><th>Status</th></tr>
+  {{range .Rows}}
+  <tr>
+    <td>{{.Type}}</td>
+    <td class="num">{{.Injected}}</td>
+    <td class="num">{{.Detected}}</td>
+    <td>
+      {{if .Short}}<span class="flag bad">under-detected</span>
+      {{else}}<span class="flag ok">ok</span>{{end}}
+    </td>
+  </tr>
+  {{if .Inflation}}
+  <tr><td class="note" colspan="4">Detected exceeds injected by design: {{.Inflation}}.</td></tr>
+  {{end}}
+  {{end}}
+</table>
+<p class="boundary">Only under-detection counts as a failure. Where detection exceeds injection the
+reason is stated on the row — those extra records are correct output, not noise.</p>
+
+<h2>Match integrity</h2>
+<dl>
+  <dt>Clean pairs in the book</dt><dd>{{.CleanPairs}}</dd>
+  <dt>Clean marketplace groups</dt><dd>{{.CleanGroups}}</dd>
+  <dt>Matches produced</dt><dd>{{.Matches}}</dd>
+  <dt>False matches</dt><dd>{{.FalseMatches}}</dd>
+  <dt>Intended pairs or groups not fully matched</dt><dd>{{.MissedIntended}}</dd>
+</dl>
+
+<h2>Run parameters</h2>
+<dl>
+  <dt>Transactions</dt><dd>{{.N}}</dd>
+  <dt>Generator seed</dt><dd>{{.Seed}}</dd>
+  <dt>Engine time</dt><dd>{{.Elapsed}}</dd>
+  <dt>Runtime invariants</dt><dd>passed — the engine returns no output when one is violated</dd>
+</dl>
+
+<p class="boundary"><b>What this proves, and what it does not.</b>
+The book is synthetic and generated in-process by <code>internal/generator</code>, which also
+supplies the ground truth used to score the result. That makes the claim reproducible by anyone —
+the same seed produces the same book and the same numbers — and it means the figures measure the
+engine's behaviour, not production mileage on real bank data. Re-run with a different
+<code>-seed</code> to confirm the result is not seed-specific.</p>
+</main>
