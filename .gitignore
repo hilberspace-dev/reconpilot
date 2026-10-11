@@ -1,0 +1,6 @@
+/recon.exe
+/benchmark.exe
+*.out
+/reports/
+/verification.html
+/.cache/

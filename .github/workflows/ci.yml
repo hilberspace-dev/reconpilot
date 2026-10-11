@@ -1,0 +1,32 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26.9" }
+      - run: go vet ./...
+      - run: go build ./...
+      - run: docker compose config --quiet
+      - name: Compose service smoke test
+        run: |
+          docker compose up --build --detach
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/readyz >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:8080/readyz
+          curl --fail --silent --request POST http://127.0.0.1:8080/api/v1/reconciliation-runs | grep --quiet '"invariants":"passed"'
+          curl --fail --silent http://127.0.0.1:8080/report | grep --quiet 'ReconPilot'
+          curl --fail --silent http://127.0.0.1:8080/metrics | grep --quiet '^reconpilot_reconciliation_runs_total 1$'
+      - name: Stop Compose services
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+      - run: go test -tags integration ./... -count=1
+      - run: go tool go-arch-lint check
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - run: go run ./cmd/benchmark -n 20000

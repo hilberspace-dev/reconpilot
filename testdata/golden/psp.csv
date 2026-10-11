@@ -1,0 +1,8 @@
+ref,counterparty,amount_kurus,currency,occurred_at,direction
+ORD-1,seller-1,100000,TRY,2026-07-01,credit
+ORD-2,seller-1,250000,TRY,2026-07-01,credit
+ORD-3,seller-1,50000,TRY,2026-07-02,credit
+ORD-4,seller-2,80000,TRY,2026-07-02,credit
+ORD-5,seller-2,120000,TRY,2026-07-03,credit
+ORD-6,seller-1,64000,TRY,2026-07-03,credit
+ORD-7,seller-3,99000,TRY,2026-07-04,credit

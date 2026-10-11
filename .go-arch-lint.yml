@@ -1,0 +1,50 @@
+version: 3
+workdir: .
+
+# Architecture boundaries apply to production code; tests may cross layers
+# (integration tests bootstrap containers, golden tests drive the full stack).
+excludeFiles:
+  - "^.*_test\\.go$"
+
+allow:
+  depOnAnyVendor: false
+
+vendors:
+  pgx: { in: github.com/jackc/pgx/** }
+
+components:
+  domain:         { in: internal/domain }
+  ingestion:      { in: internal/ingestion }
+  matching:       { in: internal/matching }
+  classification: { in: internal/classification }
+  invariants:     { in: internal/invariants }
+  engine:         { in: internal/engine }
+  generator:      { in: internal/generator }
+  ports:          { in: internal/ports }
+  reporting:      { in: internal/reporting }
+  server:         { in: internal/server }
+  store:          { in: internal/store }
+  verification:   { in: internal/verification }
+  cmd:            { in: cmd/** }
+
+deps:
+  ingestion:      { mayDependOn: [domain, store] }  # ingest.go persists via store
+  matching:       { mayDependOn: [domain] }
+  classification: { mayDependOn: [domain, matching] }
+  invariants:     { mayDependOn: [domain, matching, classification] }
+  engine:         { mayDependOn: [domain, matching, classification, invariants] }
+  generator:      { mayDependOn: [domain] }
+  ports:          { mayDependOn: [domain, matching, classification] }
+  reporting:      { mayDependOn: [domain, engine] }
+  # go-arch-lint v1.16 resolves the concrete composition-root argument passed
+  # to server.New as a direct store dependency, even though the constructor
+  # accepts the neutral ports contract. Base import checks remain enabled.
+  server:
+    mayDependOn: [engine, ports, reporting]
+    deepScan: false
+  store:          { mayDependOn: [domain, matching, classification, ports], canUse: [pgx] }
+  # verification scores an engine run against generator ground truth. It is
+  # deliberately outside server/reporting: those must not reach the generator,
+  # because a served page must never be able to fabricate its own evidence.
+  verification:   { mayDependOn: [engine, generator] }
+  cmd:            { mayDependOn: [domain, ingestion, matching, classification, invariants, engine, generator, ports, reporting, server, store, verification] }

@@ -1,0 +1,6 @@
+.git
+.github
+.cache
+reports
+recon.exe
+*.out
