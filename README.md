@@ -5,15 +5,16 @@
 
 ReconPilot is a deterministic payment reconciliation engine for e-commerce. It matches transaction records
 across three independent sources: a PSP transaction report, a bank statement and a marketplace settlement
-(payout) report. Every record it cannot match goes into one of seven discrepancy types, and the engine
-refuses to return a result if any input record is left unplaced.
+(payout) report. Every record it cannot match goes into one of eight discrepancy types, and the engine
+refuses to return a result if any input record is left unplaced. When two partners fit a record equally
+well it does not pick one: the rows are reported as `ambiguous` for a person to decide.
 
 Correctness checks run in the engine and in PostgreSQL. The engine checks three invariants; the database
 makes re-ingesting a file add no transactions. A seeded benchmark compares the engine's output with the
 synthetic data's ground truth. This is the verification panel of that benchmark, rendered by
 `go run ./cmd/verify` for seed 1:
 
-![Verification panel: PASS, 7/7 injected types detected, 0 false matches, 0 intended pairs or groups missed on 49,003 transactions](docs/verification-panel.png)
+![Verification panel: PASS, 8/8 injected types detected, 0 false matches, 0 intended pairs or groups missed on 50,359 transactions](docs/verification-panel.png)
 
 ## Try it
 
@@ -63,7 +64,7 @@ test (`internal/engine/engine_golden_test.go`) asserts exactly these counts:
 
 ## Reproducible benchmark
 
-> About 49,000 transactions (`-n 50000`), 3 sources, 7 deliberately injected discrepancy types: 7/7 types detected,
+> About 50,000 transactions (`-n 50000`), 3 sources, 8 deliberately injected discrepancy types: 8/8 types detected,
 > 0 false matches, 0 intended pairs/groups missed.
 > Run it with `go run ./cmd/benchmark`, or read it in a browser after `docker compose up -d verify` at
 > [localhost:8081](http://localhost:8081).
@@ -71,25 +72,26 @@ test (`internal/engine/engine_golden_test.go`) asserts exactly these counts:
 Sample output of `go run ./cmd/benchmark` (Go 1.26, seed 1; the elapsed time varies):
 
 ```
-reconpilot benchmark: n=49003 seed=1
-elapsed: 906.7748ms
+reconpilot benchmark: n=50359 seed=1
+elapsed: 340.7435ms
 
 type           injected   detected    emitted   expected
-commission          193        193       2036       2036  ok
+commission          193        193       1954       1954  ok
 refund              386        386        386        386  ok
-partial             193        193        386        386  ok
-timing              193        193        386        386  ok
+partial             386        386        772        772  ok
+timing              386        386        772        772  ok
 duplicate           193        193        193        193  ok
-missing             193        193        193        193  ok
+missing             386        386        386        386  ok
+ambiguous          1764       1764       1764       1764  ok
 unknown             193        193        193        193  ok
 (detected: injected records that got their type. expected: the injected records, a delta-0
- record for each commission, partial and timing counterpart, and 1650 group fee records)
+ record for each commission, partial and timing counterpart, and 1568 group fee records)
 
-clean books: pairs=17706 groups=1650, matches produced: 20128
+clean books: pairs=16548 unreferenced=193 splits=193 reversals=193 groups=1568, matches produced: 19467
 false matches: 0, intended pairs/groups not fully matched: 0
 runtime invariants: 3/3 PASSED (checked inside engine.Run)
 
-RESULT: PASS, 7/7 injected types detected, 0 false matches, 0 intended pairs/groups missed
+RESULT: PASS, 8/8 injected types detected, 0 false matches, 0 intended pairs/groups missed
 ```
 
 Each injected record is checked on its own: `detected` counts the injected records that got their type.
@@ -117,13 +119,45 @@ are in this repository (`internal/generator`). The benchmark measures how the en
 says nothing about production performance on customer data. Every produced match is checked member by
 member against the generator's intended pairing, and the run above found 0 false matches.
 
-The generator also keeps its ground truth unambiguous, and that is a design choice of the synthetic data.
-The open rows of an injected discrepancy never share a tolerant window with an open row of another
-injected order of the same seller; clean orders are matched exactly before the tolerant pass. A seller
-paid in groups gets at most two payouts, and the second group is shifted 35 days later, so the two
-payout windows never overlap (the payout dates end up 16 to 54 days apart). Real books can contain
-ambiguous same-seller rows that the tolerant or group matcher would pair. The benchmark does not measure
-that case.
+The generator also builds the hard cases on purpose, each in a fixed share of the book:
+
+- a clean pair whose bank line has no reference;
+- two orders of one seller with the same amount and day, paid by two unreferenced bank lines of that amount;
+- a bank line that carries one order's reference and exactly the amount of another order that was never paid;
+- an order paid in two or three bank lines;
+- a sale voided under its own reference;
+- two checks of one amount that both clear late, the first one on the day after the second was issued;
+- one payout in twenty with a stray order that lets a second set of orders add up to its gross.
+
+The rows that no evidence can settle are injected as `ambiguous`, and the benchmark fails if the engine
+matches any of them. Apart from these cases the open rows of different injections are kept out of each
+other's windows, and a seller paid in groups gets at most two payouts 35 days apart. So the benchmark
+checks that the engine handles each shape; it does not measure how often such collisions occur in a real
+book.
+
+### Real data
+
+The engine has also been run on five public datasets that carry their own ground truth: a bank's
+ledger against its statement (BenchRec), marketplace orders against their payments (Olist), a county's
+checks against their clearance (Fulton County, Georgia), federal accruals against their payments
+(Brazil) and a city's invoices against the checks that paid them (Baltimore). None of them is a
+merchant's PSP, bank and marketplace books together. Precision is the share of the engine's matches
+that the dataset's own links confirm; the last column is the engine before the rules in
+[ADR 0006](docs/adr/0006-match-only-on-sufficient-evidence.md), on the same files.
+
+| Data | Matches | False | Precision | Before |
+|---|---|---|---|---|
+| Olist | 96,522 | 0 | 100 % | 99.96 % |
+| BenchRec, evaluation split | 14,820 | 10 | 99.93 % | 95.64 % |
+| Fulton County, bank side without check numbers | 26,320 | 3 | 99.99 % | 98.38 % |
+| Brazil | 6,474 | 3 | 99.95 % | 55.56 % |
+| Baltimore | 116,089 | 2 | 99.998 % | not finished in 30 minutes |
+
+Precision is not coverage. Where the two sides share no reference, the engine needs the exact amount
+and no rival within 30 days, and it leaves the rest open: on the BenchRec evaluation split 37,615 of
+69,171 rows are `ambiguous`. Every remaining false match is a coincidence of amounts that the
+publisher linked elsewhere: two rows of the same amount, or a set of invoices that adds up to a check. [Runs on public real data](docs/real-data.md) has the conversions,
+coverage, each false match and what the runs do not show.
 
 ### Verification
 
@@ -179,6 +213,8 @@ integration tests.
   fit in `int64` kuruş.
 - A marketplace payout with more than 20 candidate orders is not searched; it is classified as `unknown`
   ([ADR 0003](docs/adr/0003-bounded-group-matching.md)).
+- A bank line may have an empty reference. Leave it empty when the statement prints none: a placeholder
+  such as a row number would read as a reference.
 - The HTTP API has no authentication (see the service demo below).
 
 [ADR 0001](docs/adr/0001-kurus-bigint-money.md) has the money rules in full.
@@ -233,7 +269,7 @@ go run ./cmd/recon ingest -source psp         -file testdata/golden/psp.csv
 go run ./cmd/recon ingest -source bank        -file testdata/golden/bank.csv
 go run ./cmd/recon ingest -source marketplace -file testdata/golden/marketplace.csv
 
-# 3. Reconcile (exact → tolerant → group matching, then classification + invariant check)
+# 3. Reconcile (exact → split → tolerant → group → tolerant again, then classification + invariant check)
 go run ./cmd/recon run
 
 # 4. Render the report
@@ -270,10 +306,10 @@ go tool go-arch-lint check                   # architecture boundaries, pinned v
                  engine.Run ──────────────── pure, in-memory, deterministic
                     │
         ┌───────────┼───────────────┐
-      exact      tolerant         group      matching chain, in order
+   exact · split · tolerant · group      matching chain, in order
         └───────────┼───────────────┘
                     │
-             classification        7 discrepancy types
+             classification        8 discrepancy types
                     │
               invariants.Check     runtime checks 1–3, hard-failing
                     │
@@ -281,15 +317,30 @@ go tool go-arch-lint check                   # architecture boundaries, pinned v
 ```
 
 - The matching chain is deterministic and explainable, and it runs in this order:
-  1. `exact`: reference + amount + same direction, value dates within ±3 days. A same-reference payment
-     that arrives later than that is reported as a *timing* discrepancy.
-  2. `tolerant`: ±0.5% amount, ±3 days, bank lines only. Marketplace payouts go to the group matcher and
-     are never tolerant-matched.
-  3. `group`: many-to-one (payout = Σ orders − commission) with a bounded subset search. Candidates are
+  1. `exact`: reference + amount + same direction, value dates within ±3 days. A row without a reference
+     never exact-matches. A same-reference payment that arrives later than that is reported as a
+     *timing* discrepancy.
+  2. `split`: one PSP row and two or more bank lines with its reference that add up to its amount exactly,
+     all within ±3 days (an order paid by voucher and card, say).
+  3. `tolerant`: bank lines only. With the same reference the amount may differ by up to 0.5 %. Without
+     one the amount must be exact and the pair must be the only fit: no other open bank line of that
+     counterparty and amount within 30 days of the PSP row, and no other open PSP row within 30 days of
+     the bank line. The same pass pairs a PSP sale with its void when both carry the same reference
+     (`reversal`). Marketplace payouts go to the group matcher and are never tolerant-matched.
+  4. `group`: many-to-one (payout = Σ orders − commission) with a bounded subset search. Candidates are
      narrowed by counterparty and a 14-day window, and a payout with more than 20 candidates is not
      searched; it becomes an explicit `unknown` ([ADR 0003](docs/adr/0003-bounded-group-matching.md)).
-- Classification has 7 types: commission deduction, refund, partial payment, timing shift, duplicate record,
-  missing on counterparty side, and unknown difference. The rules run in a fixed order on a sorted copy of
+     If two different sets of orders add up to the gross, neither is matched, and a later payout whose
+     set would use one of those orders is refused as well. Payouts are taken in date order, and payouts
+     of one day in reference order.
+- After the group pass the tolerant pass runs once more over the open rows, because an order the group
+  pass took no longer competes for a bank line.
+- A reference identifies a record within one counterparty. A row whose reference names a record on the
+  other side of the book never pairs with a row that carries a different reference. Rows left open on
+  purpose (more than one partner fits, or the only partner carries too little evidence) are classified
+  `ambiguous` ([ADR 0006](docs/adr/0006-match-only-on-sufficient-evidence.md)).
+- Classification has 8 types: commission deduction, refund, partial payment, timing shift, duplicate record,
+  missing on counterparty side, ambiguous, and unknown difference. The rules run in a fixed order on a sorted copy of
   the input, so the result does not depend on input order.
 - Money is `int64` kuruş everywhere, and a float in a money path is a defect by definition
   ([ADR 0001](docs/adr/0001-kurus-bigint-money.md)).
@@ -307,7 +358,9 @@ go tool go-arch-lint check                   # architecture boundaries, pinned v
 Each source is one file in `internal/ingestion/` (see `psp.go`, `bank.go`, `marketplace.go`):
 implement a header check and a row-to-`domain.Transaction` mapping, and register it in `AdapterFor`.
 A bad row becomes a `RejectedRow` and never aborts the batch. Deduplication is the
-store's job; the adapter only parses.
+store's job; the adapter only parses. Two lines of one file that agree on every keyed field (two equal
+unreferenced payments on one day, say) are both kept: the second gets an occurrence key, and reading the
+same file again gives the same keys.
 
 `ingestion.Ingest` parses the whole file before it touches the database. It then stores the batch, its
 transactions, its rejected rows and the batch counts (`status = 'ingested'`, `row_count`,
@@ -319,6 +372,8 @@ transactions, its rejected rows and the batch counts (`status = 'ingested'`, `ro
   server-rendered report, liveness and readiness, Prometheus-compatible `/metrics`, graceful shutdown),
   a minimal container image, and a one-command PostgreSQL stack with the seeded demo.
 - Next: a PSP sandbox adapter as an integration proof, and a small operator dashboard.
+- Next: references read out of bank narrative text. Without them most rows of an unreferenced bank
+  statement stay `ambiguous` (see `docs/real-data.md`).
 - Later: group matching beyond 20 members (smarter pruning or MILP).
 
 ## Design docs
@@ -328,4 +383,5 @@ transactions, its rejected rows and the batch counts (`status = 'ingested'`, `ro
 - [ADR 0003: Bounded many-to-one matching with an explicit fallback](docs/adr/0003-bounded-group-matching.md)
 - [ADR 0004: Invariants enforced at the schema level](docs/adr/0004-schema-level-invariants.md)
 - [ADR 0005: Stdlib HTTP surface and bounded observability](docs/adr/0005-stdlib-http-surface.md)
+- [ADR 0006: Match only when the evidence singles out one partner](docs/adr/0006-match-only-on-sufficient-evidence.md)
 - [Case study](docs/case-study.md)

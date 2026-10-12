@@ -22,12 +22,16 @@ and neither leaves a trace.
 
 ReconPilot is a deterministic reconciliation engine written in Go, built correctness-first:
 
-- A three-stage matching chain: exact (reference + amount + direction + ±3-day window),
-  tolerant (±0.5%, bank lines only), and bounded many-to-one group matching for marketplace
-  payouts (payout = Σ orders − commission, ≤20 members, explicit `unknown` fallback past the
-  bound).
-- Seven discrepancy classes for everything left unmatched: commission, refund, partial payment,
-  timing shift, duplicate, missing on counterparty side, unknown.
+- A four-stage matching chain: exact (reference + amount + direction + ±3-day window), split
+  (one order settled by several bank lines that carry its reference), tolerant (bank lines only:
+  the same reference within ±0.5 %, or without one the exact amount when no other row of that
+  counterparty and amount lies within 30 days), and bounded many-to-one group matching for
+  marketplace payouts (payout = Σ orders − commission, ≤20 members, explicit `unknown` fallback
+  past the bound).
+- The engine does not choose between equal candidates. When two partners fit a record, or two
+  sets of orders add up to one payout, the rows stay open as `ambiguous`.
+- Eight discrepancy classes for everything left unmatched: commission, refund, partial payment,
+  timing shift, duplicate, missing on counterparty side, ambiguous, unknown.
 - Three runtime invariants, checked on every run: every input transaction is matched or
   classified; no transaction appears in two match groups; and every transaction-level
   discrepancy delta obeys its type's money semantics. A violation aborts the run, and no partial
@@ -40,11 +44,12 @@ ReconPilot is a deterministic reconciliation engine written in Go, built correct
 
 ## The result
 
-One command (`go run ./cmd/benchmark`) reproduces the claim on about 49,000 synthetic transactions (`-n 50000`)
-with seven discrepancy types injected at known positions. The run detects 7/7 injected
+One command (`go run ./cmd/benchmark`) reproduces the claim on about 50,000 synthetic transactions (`-n 50000`)
+with eight discrepancy types injected at known positions. The run detects 8/8 injected
 discrepancy types and produces 0 false matches; every match is checked member by member against
 the generator's intended pairing. It misses 0 intended pairs or groups, and every input record
-ends up in a match or a discrepancy. The ~49,000 transactions take about one second on a laptop.
+ends up in a match or a discrepancy. The ~50,000 transactions take about a third of a second on a
+laptop.
 
 The run passes for every seed from 1 to 100, at the default size and at 20,000 transactions.
 
@@ -65,13 +70,15 @@ says it detects, produces no false matches on the generated ground truth, misses
 clean pairing, and refuses to return a result if an input record is unplaced or a
 transaction-level discrepancy delta breaks its type's rules.
 
-The generator keeps its ground truth unambiguous, and that is a design choice of the synthetic
-data. The open rows of an injected discrepancy never share a tolerant window with an open row of
-another injected order of the same seller; clean orders are matched exactly before the tolerant
-pass. A seller paid in groups gets at most two payouts, and the second group is shifted 35 days
-later, so the two payout windows never overlap (the payout dates end up 16 to 54 days apart).
-Real books can contain ambiguous same-seller rows that the tolerant or group matcher would pair, and the
-benchmark does not measure that case.
+The first version of the generator kept every open row out of every other row's window, and the
+benchmark could not see what happened when two rows fitted. Public real data could. On a bank's
+ledger against its statement (BenchRec) and on marketplace orders against their payments (Olist)
+the old engine made false matches: it treated two missing references as equal, ignored a reference
+that named another order, and took the first candidate it found. The rules were rewritten
+([ADR 0006](adr/0006-match-only-on-sufficient-evidence.md)), and the generator now injects each of
+those cases, so the benchmark fails if one comes back. On two held-out real sets the new engine made
+10 false matches of 14,820 and 3 of 6,474, and it left the cases it could not decide open for a
+person. [Runs on public real data](real-data.md) has every number and what they do not show.
 
 ---
 
@@ -90,9 +97,10 @@ etmeden silinen kayıtlardır.
 
 ### Yaklaşım
 
-ReconPilot, Go ile yazılmış deterministik bir mutabakat motorudur. Üç aşamalı bir eşleştirme
-zinciri (kesin → toleranslı → sınırlandırılmış çoktan-bire grup eşleme) ve yedi uyuşmazlık sınıfı
-kullanır. Her çalışmada üç değişmez kontrol edilir: her girdi işlemi ya eşleşir ya
+ReconPilot, Go ile yazılmış deterministik bir mutabakat motorudur. Dört aşamalı bir eşleştirme
+zinciri (kesin, bölünmüş ödeme, toleranslı ve sınırlı çoktan-bire grup eşleme) ve sekiz uyuşmazlık
+sınıfı kullanır. Bir kayda iki aday aynı ölçüde uyuyorsa motor birini seçmez; satırları `ambiguous`
+diye işaretler ve kararı bir kişiye bırakır. Her çalışmada üç değişmez kontrol edilir: her girdi işlemi ya eşleşir ya
 sınıflandırılır, hiçbir işlem iki eşleşme grubunda yer almaz, işlem bazındaki her fark tutarı
 kendi sınıfının para semantiğine uyar. Biri ihlal edilirse motor kısmi sonuç döndürmez. Dördüncü
 garanti içe aktarmadadır: aynı dosyayı yeniden yüklemek yeni işlem eklemez. Bunu PostgreSQL
@@ -103,10 +111,10 @@ tutar kabul eder; işareti yön alanı taşır.
 
 ### Sonuç
 
-İddia tek komutla tekrarlanabilir (`go run ./cmd/benchmark`): yaklaşık 49.000 sentetik işlem (`-n 50000`), bilinen
-konumlara enjekte edilmiş 7 uyuşmazlık tipi: 7/7 tip tespit, 0 yanlış eşleşme, 0 kaçırılmış
+İddia tek komutla tekrarlanabilir (`go run ./cmd/benchmark`): yaklaşık 50.000 sentetik işlem (`-n 50000`), bilinen
+konumlara enjekte edilmiş 8 uyuşmazlık tipi: 8/8 tip tespit, 0 yanlış eşleşme, 0 kaçırılmış
 amaçlanan eşleşme/grup. Her girdi kaydı bir eşleşmeye ya da uyuşmazlığa yerleşir ve çalıştırma
-dizüstü bilgisayarda yaklaşık bir saniye sürer. 1'den 100'e kadar her seed hem varsayılan boyutta
+dizüstü bilgisayarda saniyenin üçte biri kadar sürer. 1'den 100'e kadar her seed hem varsayılan boyutta
 hem 20.000 işlemde geçer.
 
 ### Benchmark sınırı
@@ -116,10 +124,12 @@ Veri sentetiktir, uyuşmazlıklar bilerek enjekte edilmiştir. Üretici kod ayn�
 kullanımı yok. Gösterdiği şey motorun davranışıdır ve bunu tek komutla kendiniz
 doğrulayabilirsiniz.
 
-Üretici doğru cevap kümesini tek anlamlı tutar; bu, sentetik verinin bilinçli bir tasarım
-tercihidir. Enjekte edilen bir uyuşmazlığın açık satırları, aynı satıcının enjekte edilmiş başka
-bir siparişinin açık satırlarıyla hiçbir zaman aynı tolerans penceresine düşmez; temiz siparişler
-toleranslı eşleştirmeden önce birebir eşleşir. Grup halinde ödeme alan bir satıcıya en fazla iki
-ödeme yapılır ve ikinci grup 35 gün sonraya kaydırılır, böylece iki ödeme penceresi çakışmaz (iki
-ödeme tarihi arasında 16 ile 54 gün olur). Gerçek defterlerde toleranslı ya da grup eşleştiricinin birbirine bağlayacağı, aynı satıcıya ait
-belirsiz satırlar olabilir. Benchmark bu durumu ölçmez.
+Üreticinin ilk sürümü her açık satırı diğerlerinin penceresinden uzak tutuyordu ve benchmark
+iki satırın aynı anda uyduğu durumu hiç görmedi. Kamuya açık gerçek veri gösterdi: bir
+bankanın defteri ile hesap ekstresinde (BenchRec) ve pazaryeri siparişleri ile ödemelerinde (Olist)
+eski motor yanlış eşleşmeler yaptı. İki boş referansı eşit saydı, başka bir siparişi gösteren
+referansı yok saydı ve bulduğu ilk adayı aldı. Kurallar yeniden yazıldı
+([ADR 0006](adr/0006-match-only-on-sufficient-evidence.md)). Üretici artık bu durumların her birini
+bilerek ekliyor; biri geri gelirse benchmark düşer. Kurallar yazılırken kullanılmayan iki gerçek sette
+yeni motor 14.820 eşleşmede 10, 6.474 eşleşmede 3 yanlış yaptı ve karar veremediği satırları bir
+kişiye bıraktı. Bütün sayılar ve sınırları [Runs on public real data](real-data.md) belgesinde.
