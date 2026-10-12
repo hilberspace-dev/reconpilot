@@ -20,6 +20,9 @@ type page struct {
 	MissedIntended int
 	Rows           []TypeRow
 	CleanPairs     int
+	Unreferenced   int
+	Splits         int
+	Reversals      int
 	CleanGroups    int
 	Matches        int
 	N              int
@@ -41,6 +44,9 @@ func RenderHTML(r Result) ([]byte, error) {
 		MissedIntended: r.MissedIntended,
 		Rows:           r.Rows,
 		CleanPairs:     r.CleanPairs,
+		Unreferenced:   r.Unreferenced,
+		Splits:         r.Splits,
+		Reversals:      r.Reversals,
 		CleanGroups:    r.CleanGroups,
 		Matches:        r.Matches,
 		N:              r.N,

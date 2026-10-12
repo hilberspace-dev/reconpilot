@@ -1,5 +1,6 @@
-// Package engine runs the pipeline in order: split the pool, exact, tolerant
-// and group matching, classification, then the invariant check. It does no
+// Package engine runs the pipeline in order: split the pool, exact, split,
+// tolerant and group matching, the tolerant pass again over what is left,
+// classification, then the invariant check. It does no
 // I/O; the commands connect it to the store.
 package engine
 
@@ -40,10 +41,37 @@ func Run(all []domain.Transaction) (Output, error) {
 	pool := matching.SplitPool(all)
 	var matches []matching.Match
 	matches = append(matches, matching.MatchExact(&pool)...)
-	matches = append(matches, matching.MatchTolerant(&pool)...)
-	groupMatches, groupCandidates := matching.MatchGroups(&pool)
+	matches = append(matches, matching.MatchSplits(&pool)...)
+	tolerantMatches, _ := matching.MatchTolerant(&pool)
+	matches = append(matches, tolerantMatches...)
+	groupMatches, groupCandidates, unsureGroups := matching.MatchGroups(&pool)
 	matches = append(matches, groupMatches...)
-	discs := classification.Classify(pool, matches, groupCandidates, all)
+	// The tolerant pass runs once more: an order the group pass took no
+	// longer competes for a bank line, and a pair it blocked may now be the
+	// only fit. Its contested rows are the ones still open after everything.
+	tolerantMatches, contested := matching.MatchTolerant(&pool)
+	matches = append(matches, tolerantMatches...)
+	open := map[int64]bool{}
+	for _, t := range pool.Expected {
+		open[t.ID] = true
+	}
+	for _, t := range pool.Actual {
+		open[t.ID] = true
+	}
+	var ambiguous []int64
+	for _, id := range unsureGroups {
+		if open[id] {
+			ambiguous = append(ambiguous, id)
+			open[id] = false // listed once
+		}
+	}
+	for _, id := range contested {
+		if open[id] {
+			ambiguous = append(ambiguous, id)
+			open[id] = false
+		}
+	}
+	discs := classification.Classify(pool, matches, groupCandidates, ambiguous, all)
 	if err := invariants.Check(all, matches, discs); err != nil {
 		return Output{}, err
 	}

@@ -148,7 +148,9 @@ type runSummary struct {
 
 type matchCounts struct {
 	Exact    int `json:"exact"`
+	Split    int `json:"split"`
 	Tolerant int `json:"tolerant"`
+	Reversal int `json:"reversal"`
 	Group    int `json:"group"`
 }
 
@@ -159,6 +161,7 @@ type discrepancyCounts struct {
 	Timing     int `json:"timing"`
 	Duplicate  int `json:"duplicate"`
 	Missing    int `json:"missing"`
+	Ambiguous  int `json:"ambiguous"`
 	Unknown    int `json:"unknown"`
 }
 
@@ -174,8 +177,12 @@ func summarize(out engine.Output) runSummary {
 		switch match.Kind {
 		case "exact":
 			s.Matches.Exact++
+		case "split":
+			s.Matches.Split++
 		case "tolerant":
 			s.Matches.Tolerant++
+		case "reversal":
+			s.Matches.Reversal++
 		case "group":
 			s.Matches.Group++
 		}
@@ -194,6 +201,8 @@ func summarize(out engine.Output) runSummary {
 			s.DiscrepancyTypes.Duplicate++
 		case "missing":
 			s.DiscrepancyTypes.Missing++
+		case "ambiguous":
+			s.DiscrepancyTypes.Ambiguous++
 		case "unknown":
 			s.DiscrepancyTypes.Unknown++
 		}

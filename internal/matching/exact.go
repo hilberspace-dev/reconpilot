@@ -8,21 +8,29 @@ import (
 
 // MatchExact pairs transactions by reference, amount and direction within
 // the allowed date window. Late payments remain for discrepancy classification.
+// Rows without a reference are left to the tolerant pass: an empty reference
+// is the absence of evidence, and two of them must not count as a match.
 func MatchExact(p *Pool) []Match {
 	type key struct {
-		ref    string
+		ref    refKey
 		amount int64
 	}
 	actualByKey := map[key][]int{}
 	for i, a := range p.Actual {
-		k := key{a.ExternalRef, a.AmountKurus}
+		if a.ExternalRef == "" {
+			continue
+		}
+		k := key{keyOf(a), a.AmountKurus}
 		actualByKey[k] = append(actualByKey[k], i)
 	}
 	var matches []Match
 	var usedExp, usedAct []int
 	claimed := map[int]bool{}
 	for i, e := range p.Expected {
-		k := key{e.ExternalRef, e.AmountKurus}
+		if e.ExternalRef == "" {
+			continue
+		}
+		k := key{keyOf(e), e.AmountKurus}
 		found := -1
 		for _, ai := range actualByKey[k] {
 			a := p.Actual[ai]

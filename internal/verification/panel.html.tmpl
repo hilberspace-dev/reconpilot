@@ -105,6 +105,9 @@ emitted differs from expected.</p>
 <h2>Match integrity</h2>
 <dl>
   <dt>Clean pairs in the book</dt><dd>{{.CleanPairs}}</dd>
+  <dt>Clean pairs with an unreferenced bank line</dt><dd>{{.Unreferenced}}</dd>
+  <dt>Orders paid in several bank lines</dt><dd>{{.Splits}}</dd>
+  <dt>Sales voided under their own reference</dt><dd>{{.Reversals}}</dd>
   <dt>Clean marketplace groups</dt><dd>{{.CleanGroups}}</dd>
   <dt>Matches produced</dt><dd>{{.Matches}}</dd>
   <dt>False matches</dt><dd>{{.FalseMatches}}</dd>
@@ -123,12 +126,11 @@ emitted differs from expected.</p>
 The book is synthetic. It is generated in-process by <code>internal/generator</code>, which also
 supplies the ground truth used to score the result, so anyone can reproduce the claim: the same seed
 produces the same book and the same numbers. The figures measure the engine's behaviour on this book
-and say nothing about production use on real bank data. The generator keeps the ground truth
-unambiguous on purpose. The open rows of an injected discrepancy never share a tolerant window with
-an open row of another injected order of the same seller, and clean orders are matched exactly before
-the tolerant pass. A seller paid in groups gets at most two payouts, and the second group is shifted
-35 days later, so the payout windows never overlap.
-Real books can contain ambiguous same-seller rows that the tolerant or group matcher would pair, and
-this run does not measure that case. The repository's README has a loop that checks seeds 1 to 100;
-re-run with a different <code>-seed</code> to check another book.</p>
+and say nothing about production use on real bank data. The book contains, on purpose, the cases
+that no evidence can settle: equal orders paid by equal unreferenced lines, checks of one amount that
+clear late, payouts that two sets of orders add up to. Their rows are injected as ambiguous, and the
+run fails if any of them is matched. Apart from those cases the open rows of different injections are
+kept out of each other's windows, so the run does not measure how often such collisions occur in a
+real book. The repository's README has a loop that checks seeds 1 to 100; re-run with a different
+<code>-seed</code> to check another book.</p>
 </main>

@@ -67,7 +67,7 @@ func Render(out engine.Output, all []domain.Transaction) ([]byte, []byte, error)
 	if out.TotalTx > 0 {
 		p.MatchRatePct = fmt.Sprintf("%d", matched*100/out.TotalTx)
 	}
-	for _, k := range []string{"exact", "tolerant", "group"} {
+	for _, k := range []string{"exact", "split", "tolerant", "reversal", "group"} {
 		p.MatchRows = append(p.MatchRows, matchRow{k, kinds[k]})
 	}
 	discCount := map[string]int{}
@@ -93,7 +93,7 @@ func Render(out engine.Output, all []domain.Transaction) ([]byte, []byte, error)
 		}
 		fmt.Fprintf(&csvBuf, "%s,%d,%d\n", d.Type, txID, d.DeltaKurus)
 	}
-	for _, typ := range []string{"commission", "refund", "partial", "timing", "duplicate", "missing", "unknown"} {
+	for _, typ := range []string{"commission", "refund", "partial", "timing", "duplicate", "missing", "ambiguous", "unknown"} {
 		p.DiscRows = append(p.DiscRows, discRow{typ, discCount[typ], FormatTRY(discTotal[typ])})
 	}
 	for _, b := range []string{"0-7d", "8-30d", "30d+"} {

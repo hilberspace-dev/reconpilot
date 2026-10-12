@@ -47,3 +47,15 @@ func TestMatchExactRespectsDateWindow(t *testing.T) {
 		t.Fatalf("5-day shift must not exact-match: %+v", got)
 	}
 }
+
+func TestMatchExactNeedsAReference(t *testing.T) {
+	// Two rows without a reference share nothing but an amount. The old key
+	// (ref, amount) treated "" as a reference and paired them with score 10000.
+	p := SplitPool([]domain.Transaction{
+		tx(1, domain.SourcePSP, "", 1000, 1),
+		tx(2, domain.SourceBank, "", 1000, 1),
+	})
+	if got := MatchExact(&p); len(got) != 0 {
+		t.Fatalf("empty references must not exact-match: %+v", got)
+	}
+}

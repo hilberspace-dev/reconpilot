@@ -49,6 +49,7 @@ func parseRows(r io.Reader, wantHeader []string, perRow func(rec []string) (doma
 	}
 	var txs []domain.Transaction
 	var rejected []RejectedRow
+	seen := map[string]int{} // rows per dedup key in this file
 	rowNo := 1
 	for {
 		rec, err := cr.Read()
@@ -69,6 +70,10 @@ func parseRows(r io.Reader, wantHeader []string, perRow func(rec []string) (doma
 			continue
 		}
 		tx.Status = domain.StatusUnmatched
+		seen[tx.DedupKey]++
+		if n := seen[tx.DedupKey]; n > 1 {
+			tx.DedupKey = domain.OccurrenceKey(tx.DedupKey, n)
+		}
 		txs = append(txs, tx)
 	}
 	return txs, rejected, nil

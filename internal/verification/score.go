@@ -10,8 +10,8 @@ import (
 )
 
 // Types is the fixed discrepancy vocabulary, in the order every surface
-// reports it. It mirrors the CHECK constraint in the initial migration.
-var Types = []string{"commission", "refund", "partial", "timing", "duplicate", "missing", "unknown"}
+// reports it. It mirrors the CHECK constraint in the store migrations.
+var Types = []string{"commission", "refund", "partial", "timing", "duplicate", "missing", "ambiguous", "unknown"}
 
 // mirrored lists the types whose injected pairs also produce a delta-0 record
 // for the counterpart row on the actual side.
@@ -41,6 +41,9 @@ type Result struct {
 	Rows           []TypeRow
 	CleanPairs     int
 	CleanGroups    int
+	Unreferenced   int
+	Splits         int
+	Reversals      int
 	Matches        int
 	FalseMatches   int
 	MissedIntended int
@@ -91,7 +94,8 @@ func Score(seed int64, n int) (Result, error) {
 
 // tally scores engine output against the ground truth.
 func tally(gt generator.GroundTruth, out engine.Output) Result {
-	res := Result{CleanPairs: gt.CleanPairs, CleanGroups: gt.CleanGroups, Matches: len(out.Matches)}
+	res := Result{CleanPairs: gt.CleanPairs, CleanGroups: gt.CleanGroups, Unreferenced: gt.UnreferencedPairs,
+		Splits: gt.CleanSplits, Reversals: gt.CleanReversals, Matches: len(out.Matches)}
 
 	emitted := map[string]int{}
 	typeOf := map[int64]string{}

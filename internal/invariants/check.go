@@ -52,7 +52,7 @@ func Check(all []domain.Transaction, matches []matching.Match, discs []classific
 				ok = d.delta >= 0 && d.delta < t.AmountKurus
 			case "refund":
 				ok = d.delta == -t.AmountKurus // money moved back, full amount
-			case "missing", "duplicate", "unknown":
+			case "missing", "duplicate", "ambiguous", "unknown":
 				ok = d.delta == t.AmountKurus // the whole amount is unexplained
 			}
 			if !ok {

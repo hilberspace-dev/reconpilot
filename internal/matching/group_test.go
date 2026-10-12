@@ -2,6 +2,8 @@ package matching
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -19,16 +21,16 @@ func payout(id int64, counterparty string, gross, commission int64, day int) dom
 }
 
 func TestMatchGroupsFindsSubset(t *testing.T) {
-	// Orders 1000+2000+3000; payout gross 3000 (orders 1 and 2), commission 450.
+	// Orders 1000+2000+3500; payout gross 3000 (orders 1 and 2), commission 450.
 	p := SplitPool([]domain.Transaction{
 		tx(1, domain.SourcePSP, "ORD-1", 1000, 1),
 		tx(2, domain.SourcePSP, "ORD-2", 2000, 2),
-		tx(3, domain.SourcePSP, "ORD-3", 3000, 2),
+		tx(3, domain.SourcePSP, "ORD-3", 3500, 2),
 		payout(9, "seller-1", 3000, 450, 5),
 	})
-	matches, cands := MatchGroups(&p)
-	if len(cands) != 0 {
-		t.Fatalf("no candidate overflow expected: %v", cands)
+	matches, cands, ambiguous := MatchGroups(&p)
+	if len(cands) != 0 || len(ambiguous) != 0 {
+		t.Fatalf("no candidate overflow or ambiguity expected: %v %v", cands, ambiguous)
 	}
 	if len(matches) != 1 || matches[0].Kind != "group" {
 		t.Fatalf("want 1 group match, got %+v", matches)
@@ -49,7 +51,7 @@ func TestMatchGroupsOverflowFallsBack(t *testing.T) {
 	}
 	txs = append(txs, payout(99, "seller-1", 500, 50, 5))
 	p := SplitPool(txs)
-	matches, cands := MatchGroups(&p)
+	matches, cands, _ := MatchGroups(&p)
 	if len(matches) != 0 || len(cands) != 1 || cands[0] != 99 {
 		t.Fatalf("want overflow fallback: matches=%v cands=%v", matches, cands)
 	}
@@ -67,7 +69,7 @@ func TestMatchGroupsIgnoresDebitOrders(t *testing.T) {
 		refund,
 		payout(9, "seller-1", 1500, 100, 5),
 	})
-	matches, cands := MatchGroups(&p)
+	matches, cands, _ := MatchGroups(&p)
 	if len(matches) != 0 || len(cands) != 0 {
 		t.Fatalf("debit refund absorbed as positive addend: matches=%+v cands=%v", matches, cands)
 	}
@@ -83,7 +85,7 @@ func TestMatchGroupsZeroGrossPayoutNotMatched(t *testing.T) {
 		tx(1, domain.SourcePSP, "ORD-1", 1000, 1),
 		payout(9, "seller-1", 0, 0, 5),
 	})
-	matches, cands := MatchGroups(&p)
+	matches, cands, _ := MatchGroups(&p)
 	if len(matches) != 0 || len(cands) != 0 {
 		t.Fatalf("zero-gross payout must not match: matches=%+v cands=%v", matches, cands)
 	}
@@ -104,7 +106,7 @@ func TestMatchGroupsTwoPayoutsDisjointSubsets(t *testing.T) {
 		payout(8, "seller-1", 300, 30, 5),   // ORD-1 + ORD-2
 		payout(9, "seller-1", 1200, 120, 5), // ORD-3 + ORD-4
 	})
-	matches, cands := MatchGroups(&p)
+	matches, cands, _ := MatchGroups(&p)
 	if len(cands) != 0 || len(matches) != 2 {
 		t.Fatalf("want 2 group matches, got matches=%+v cands=%v", matches, cands)
 	}
@@ -132,7 +134,7 @@ func TestMatchGroupsNoSubsetLeavesPayout(t *testing.T) {
 		tx(1, domain.SourcePSP, "ORD-1", 1000, 1),
 		payout(9, "seller-1", 999, 100, 5), // no subset sums to 999
 	})
-	matches, cands := MatchGroups(&p)
+	matches, cands, _ := MatchGroups(&p)
 	if len(matches) != 0 || len(cands) != 0 {
 		t.Fatalf("unexpected: %v %v", matches, cands)
 	}
@@ -151,11 +153,27 @@ func TestMatchGroupsIgnoresDebitPayouts(t *testing.T) {
 		tx(1, domain.SourcePSP, "ORD-1", 1000, 1),
 		back,
 	})
-	matches, cands := MatchGroups(&p)
+	matches, cands, _ := MatchGroups(&p)
 	if len(matches) != 0 || len(cands) != 0 {
 		t.Fatalf("debit payout must not match: matches=%+v cands=%v", matches, cands)
 	}
 	if len(p.Actual) != 1 || len(p.Expected) != 1 {
 		t.Fatalf("nothing may leave the pool: expected=%d actual=%d", len(p.Expected), len(p.Actual))
+	}
+}
+
+func TestMatchGroupsRefusesTwoFittingSubsets(t *testing.T) {
+	// Gross 3000 is ORD-1 + ORD-2 and also ORD-3 alone. The old search took
+	// the older orders; nothing in the book says which set was paid.
+	p := SplitPool([]domain.Transaction{
+		tx(1, domain.SourcePSP, "ORD-1", 1000, 1),
+		tx(2, domain.SourcePSP, "ORD-2", 2000, 2),
+		tx(3, domain.SourcePSP, "ORD-3", 3000, 2),
+		payout(9, "seller-1", 3000, 450, 5),
+	})
+	matches, _, ambiguous := MatchGroups(&p)
+	sort.Slice(ambiguous, func(i, j int) bool { return ambiguous[i] < ambiguous[j] })
+	if len(matches) != 0 || !reflect.DeepEqual(ambiguous, []int64{1, 2, 3, 9}) {
+		t.Fatalf("want no match and 1, 2, 3, 9 ambiguous, got %+v, %v", matches, ambiguous)
 	}
 }

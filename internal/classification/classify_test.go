@@ -47,7 +47,7 @@ func TestClassifySevenTypes(t *testing.T) {
 		}
 	}
 	pool := matching.SplitPool(leftover)
-	ds := Classify(pool, nil, []int64{70}, all) // 70 = a group_candidate payout id
+	ds := Classify(pool, nil, []int64{70}, nil, all) // 70 = a group_candidate payout id
 	// Counterpart mirrors with delta 0: tx 32 is partial, tx 42 commission and
 	// tx 52 timing. The only unknown is the group-candidate payout 70, which is
 	// not in the book, so its amount is 0.
@@ -96,7 +96,7 @@ func TestRefundNotMistakenForDuplicateOfItsCreditLeg(t *testing.T) {
 	}
 	// Pretend 1 and 2 matched exactly; only the refund is leftover.
 	pool := matching.SplitPool([]domain.Transaction{all[2]})
-	ds := Classify(pool, nil, nil, all)
+	ds := Classify(pool, nil, nil, nil, all)
 	if len(ds) != 1 || ds[0].Type != "refund" || ds[0].DeltaKurus != -500 {
 		t.Fatalf("want refund(-500), got %+v", ds)
 	}
@@ -113,7 +113,7 @@ func TestCommissionBandLowerEdge(t *testing.T) {
 			tx(1, domain.SourcePSP, "ORD-E", 10000, 1, domain.DirCredit),
 			tx(2, domain.SourceBank, "ORD-E", c.bank, 2, domain.DirCredit),
 		}
-		ds := Classify(matching.SplitPool(all), nil, nil, all)
+		ds := Classify(matching.SplitPool(all), nil, nil, nil, all)
 		var got string
 		for _, d := range ds {
 			if d.TxID != nil && *d.TxID == 1 {

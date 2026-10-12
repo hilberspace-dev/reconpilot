@@ -14,3 +14,11 @@ const TolerantAmountBP = 50
 func TolerantLimit(amount int64) int64 {
 	return amount / (10000 / TolerantAmountBP)
 }
+
+// AmountHorizonDays is how far apart two rows of one counterparty and amount
+// can be and still be taken for the same money when no reference ties them.
+// Beyond the match window such a pair is a timing difference, and its rows
+// stop a same-amount pair inside the window from counting as the only fit: a
+// check that clears eight days late leaves its own clearance outside the
+// window while another check of the same vendor and amount lands inside it.
+const AmountHorizonDays = 30

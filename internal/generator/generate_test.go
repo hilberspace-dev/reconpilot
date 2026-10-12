@@ -17,10 +17,13 @@ func TestGenerateIsDeterministicAndComplete(t *testing.T) {
 			t.Fatalf("row %d differs across runs with same seed", i)
 		}
 	}
-	for _, typ := range []string{"commission", "refund", "partial", "timing", "duplicate", "missing", "unknown"} {
+	for _, typ := range []string{"commission", "refund", "partial", "timing", "duplicate", "missing", "ambiguous", "unknown"} {
 		if gt1.InjectedByType[typ] == 0 {
 			t.Fatalf("type %s never injected: %+v", typ, gt1)
 		}
+	}
+	if gt1.UnreferencedPairs == 0 || gt1.CleanSplits == 0 || gt1.CleanReversals == 0 {
+		t.Fatalf("unreferenced pairs, splits and reversals must all occur: %+v", gt1)
 	}
 	if gt1.InjectedByType["refund"] != gt2.InjectedByType["refund"] {
 		t.Fatal("ground truth must be deterministic too")

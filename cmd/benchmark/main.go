@@ -40,8 +40,8 @@ func main() {
 	fmt.Printf(" record for each commission, partial and timing counterpart, and %d group fee records)\n", res.CleanGroups)
 
 	// internal/verification defines what counts as a false or missed match.
-	fmt.Printf("\nclean books: pairs=%d groups=%d, matches produced: %d\n",
-		res.CleanPairs, res.CleanGroups, res.Matches)
+	fmt.Printf("\nclean books: pairs=%d unreferenced=%d splits=%d reversals=%d groups=%d, matches produced: %d\n",
+		res.CleanPairs, res.Unreferenced, res.Splits, res.Reversals, res.CleanGroups, res.Matches)
 	fmt.Printf("false matches: %d, intended pairs/groups not fully matched: %d\n", res.FalseMatches, res.MissedIntended)
 	fmt.Printf("runtime invariants: 3/3 PASSED (checked inside engine.Run)\n")
 	if _, injected := res.DetectedTypes(); injected == 0 {

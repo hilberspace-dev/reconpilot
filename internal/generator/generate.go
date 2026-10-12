@@ -14,6 +14,12 @@ type GroundTruth struct {
 	InjectedByType map[string]int
 	CleanPairs     int
 	CleanGroups    int
+	// Clean shapes that need more than the reference and amount: a bank line
+	// with no reference, an order paid in several bank lines, and a sale
+	// voided under its own reference.
+	UnreferencedPairs int
+	CleanSplits       int
+	CleanReversals    int
 	// IntendedGroup maps every transaction that should end up inside a match
 	// to its intended group label (pair ref or payout ref). A transaction
 	// missing from the map must stay unmatched; the benchmark counts a match
@@ -22,7 +28,9 @@ type GroundTruth struct {
 	// InjectedTx maps the transaction that must carry each injected
 	// discrepancy to its type: the PSP row of a commission, partial, timing
 	// or missing order, the copied row of a duplicate, the debit row of a
-	// refund and the stray bank row of an unknown.
+	// refund, the stray bank row of an unknown, all four rows of an ambiguous
+	// pair of pairs, the late-cleared check pair (one timing, two ambiguous)
+	// and every row of an ambiguous payout group.
 	InjectedTx map[int64]string
 }
 
@@ -53,10 +61,11 @@ func Generate(seed int64, n int) ([]domain.Transaction, GroundTruth) {
 	day := func() int { return rng.IntN(30) }
 
 	// An injected discrepancy leaves rows that exact matching cannot pair.
-	// Two such rows of the same seller from different orders, within the
-	// tolerant window, form a valid tolerant match, and the ground truth could
-	// not call it false. reserve records an injection's open rows
-	// per seller, or refuses them when one would land in the window of an
+	// Two such rows of the same seller from different orders can still meet:
+	// inside the tolerant window they are a candidate pair, and with the same
+	// amount within AmountHorizonDays one is a rival or a late payment of the
+	// other. Either way the ground truth would be wrong. reserve records an
+	// injection's open rows per seller, or refuses them when one would meet an
 	// earlier open row; the caller then draws a new amount.
 	type openRow struct {
 		amount int64
@@ -70,6 +79,9 @@ func Generate(seed int64, n int) ([]domain.Transaction, GroundTruth) {
 		}
 		if diff < 0 {
 			diff = -diff
+		}
+		if diff == 0 && days <= domain.AmountHorizonDays {
+			return true
 		}
 		return days <= domain.MatchWindowDays && diff <= domain.TolerantLimit(e.amount)
 	}
@@ -186,6 +198,100 @@ func Generate(seed int64, n int) ([]domain.Transaction, GroundTruth) {
 			gt.IntendedGroup[bank.ID] = ref
 			gt.InjectedTx[alien.ID] = "unknown"
 			gt.InjectedByType["unknown"]++
+		case i%100 < 9: // clean pair whose bank line carries no reference
+			for !reserve(cp, []openRow{{amt, d}}, []openRow{{amt, d + shift}}) {
+				amt = amount()
+			}
+			psp := mkTx(domain.SourcePSP, ref, cp, amt, d, domain.DirCredit)
+			bank := mkTx(domain.SourceBank, "", cp, amt, d+shift, domain.DirCredit)
+			bank.DedupKey = domain.DedupKey(domain.SourceBank, ref+"|noref", amt, bank.OccurredAt, domain.DirCredit)
+			out = append(out, psp, bank)
+			gt.IntendedGroup[psp.ID] = ref
+			gt.IntendedGroup[bank.ID] = ref
+			gt.UnreferencedPairs++
+		case i%100 < 10: // two equal orders paid by two equal unreferenced lines
+			// Either pairing fits, so the engine must leave all four rows open
+			// as ambiguous instead of picking one.
+			for !reserve(cp, []openRow{{amt, d}, {amt, d}}, []openRow{{amt, d + shift}, {amt, d + shift}}) {
+				amt = amount()
+			}
+			for _, suffix := range []string{"-A", "-B"} {
+				psp := mkTx(domain.SourcePSP, ref+suffix, cp, amt, d, domain.DirCredit)
+				bank := mkTx(domain.SourceBank, "", cp, amt, d+shift, domain.DirCredit)
+				bank.DedupKey = domain.DedupKey(domain.SourceBank, ref+suffix+"|noref", amt, bank.OccurredAt, domain.DirCredit)
+				out = append(out, psp, bank)
+				gt.InjectedTx[psp.ID] = "ambiguous"
+				gt.InjectedTx[bank.ID] = "ambiguous"
+			}
+			gt.InjectedByType["ambiguous"] += 4
+		case i%100 < 11: // an order paid in two or three bank lines
+			psp := mkTx(domain.SourcePSP, ref, cp, amt, d, domain.DirCredit)
+			out = append(out, psp)
+			gt.IntendedGroup[psp.ID] = ref
+			k := 2 + rng.IntN(2)
+			left := amt
+			for j := 0; j < k; j++ {
+				part := left
+				if j < k-1 {
+					part = 1 + rng.Int64N(left-int64(k-1-j))
+				}
+				left -= part
+				bank := mkTx(domain.SourceBank, ref, cp, part, d+rng.IntN(4), domain.DirCredit)
+				bank.DedupKey = domain.DedupKey(domain.SourceBank, fmt.Sprintf("%s|part%d", ref, j), part, bank.OccurredAt, domain.DirCredit)
+				out = append(out, bank)
+				gt.IntendedGroup[bank.ID] = ref
+			}
+			gt.CleanSplits++
+		case i%100 < 12: // a sale and its void under the same reference
+			// Other open rows of the seller carry other references, so only
+			// unreferenced bank lines could compete; reserve keeps them away.
+			for !reserve(cp, []openRow{{amt, d}, {amt, d}}, nil) {
+				amt = amount()
+			}
+			sale := mkTx(domain.SourcePSP, ref, cp, amt, d, domain.DirCredit)
+			void := mkTx(domain.SourcePSP, ref, cp, amt, d+rng.IntN(2), domain.DirDebit)
+			out = append(out, sale, void)
+			gt.IntendedGroup[sale.ID] = ref
+			gt.IntendedGroup[void.ID] = ref
+			gt.CleanReversals++
+		case i%100 < 13: // a partial payment whose bank line fits another order
+			// Order ref is missing; order ref-Y was paid 30-70 % short, and its
+			// bank line carries ref-Y and exactly the amount of the missing
+			// order. The line names ref-Y, so it is not the missing order's
+			// money.
+			full := amount()
+			cut := full * (3000 + rng.Int64N(4000)) / 10000
+			for !reserve(cp, []openRow{{full - cut, d}, {full, d}}, []openRow{{full - cut, d + shift}}) {
+				full = amount()
+				cut = full * (3000 + rng.Int64N(4000)) / 10000
+			}
+			missing := mkTx(domain.SourcePSP, ref, cp, full-cut, d, domain.DirCredit)
+			short := mkTx(domain.SourcePSP, ref+"-Y", cp, full, d, domain.DirCredit)
+			out = append(out, missing, short, mkTx(domain.SourceBank, ref+"-Y", cp, full-cut, d+shift, domain.DirCredit))
+			gt.InjectedTx[missing.ID] = "missing"
+			gt.InjectedTx[short.ID] = "partial"
+			gt.InjectedByType["missing"]++
+			gt.InjectedByType["partial"]++
+		case i%100 < 14: // two checks of one amount, both cleared late
+			// Check A clears on day d+8, the day after check B was issued; B
+			// clears on day d+16. Inside B's window A's clearance is the only
+			// fit, but B's own clearance is within the horizon, so B and A's
+			// clearance stay ambiguous; A and B's clearance are timing.
+			for !reserve(cp, []openRow{{amt, d}, {amt, d + 7}}, []openRow{{amt, d + 8}, {amt, d + 16}}) {
+				amt = amount()
+			}
+			checkA := mkTx(domain.SourcePSP, ref+"-A", cp, amt, d, domain.DirCredit)
+			checkB := mkTx(domain.SourcePSP, ref+"-B", cp, amt, d+7, domain.DirCredit)
+			clearA := mkTx(domain.SourceBank, "", cp, amt, d+8, domain.DirCredit)
+			clearA.DedupKey = domain.DedupKey(domain.SourceBank, ref+"-A|noref", amt, clearA.OccurredAt, domain.DirCredit)
+			clearB := mkTx(domain.SourceBank, "", cp, amt, d+16, domain.DirCredit)
+			clearB.DedupKey = domain.DedupKey(domain.SourceBank, ref+"-B|noref", amt, clearB.OccurredAt, domain.DirCredit)
+			out = append(out, checkA, checkB, clearA, clearB)
+			gt.InjectedTx[checkA.ID] = "timing" // clearB is the delta-0 timing record
+			gt.InjectedTx[checkB.ID] = "ambiguous"
+			gt.InjectedTx[clearA.ID] = "ambiguous"
+			gt.InjectedByType["timing"]++
+			gt.InjectedByType["ambiguous"] += 2
 		default: // clean pair
 			psp := mkTx(domain.SourcePSP, ref, cp, amt, d, domain.DirCredit)
 			bank := mkTx(domain.SourceBank, ref, cp, amt, d+shift, domain.DirCredit)
@@ -213,19 +319,36 @@ func Generate(seed int64, n int) ([]domain.Transaction, GroundTruth) {
 		if g >= groupSellers {
 			baseDay += 35
 		}
+		var members []domain.Transaction
 		for j := 0; j < k; j++ {
 			amt := amount()
 			gross += amt
-			ord := mkTx(domain.SourcePSP, fmt.Sprintf("GRP-%04d-%d", g, j), cp, amt, baseDay+rng.IntN(5), domain.DirCredit)
-			out = append(out, ord)
-			gt.IntendedGroup[ord.ID] = label
+			members = append(members, mkTx(domain.SourcePSP, fmt.Sprintf("GRP-%04d-%d", g, j), cp, amt, baseDay+rng.IntN(5), domain.DirCredit))
+		}
+		// One group in twenty gets a stray order of the seller with the same
+		// amount as one of its orders. Two sets of orders then add up to the
+		// gross, and the payout, its orders and the stray must stay open as
+		// ambiguous.
+		ambiguous := g%20 == 19
+		if ambiguous {
+			members = append(members, mkTx(domain.SourcePSP, fmt.Sprintf("GRP-%04d-x", g), cp, members[0].AmountKurus, baseDay+rng.IntN(5), domain.DirCredit))
 		}
 		commission := gross * (800 + rng.Int64N(1700)) / 10000
 		p := mkTx(domain.SourceMarketplace, label, cp, gross-commission, baseDay+7, domain.DirCredit)
 		p.GrossKurus, p.CommissionKurus = gross, commission
-		out = append(out, p)
-		gt.IntendedGroup[p.ID] = label
-		gt.CleanGroups++
+		members = append(members, p)
+		out = append(out, members...)
+		for _, m := range members {
+			if ambiguous {
+				gt.InjectedTx[m.ID] = "ambiguous"
+				gt.InjectedByType["ambiguous"]++
+			} else {
+				gt.IntendedGroup[m.ID] = label
+			}
+		}
+		if !ambiguous {
+			gt.CleanGroups++
+		}
 	}
 	return out, gt
 }
