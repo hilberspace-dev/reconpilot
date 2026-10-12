@@ -64,8 +64,8 @@ HTTP handlers only call the existing store and engine.
 ## Benchmark scope
 
 The benchmark data is synthetic and the discrepancies are injected on purpose. The generator
-lives in the same repository, and the run is seeded and reproducible. There is no production use
-on real customer data behind it. What one command does show is that the engine detects what it
+lives in the same repository, and the run is seeded and reproducible. What one command shows is
+that the engine detects what it
 says it detects, produces no false matches on the generated ground truth, misses no intended
 clean pairing, and refuses to return a result if an input record is unplaced or a
 transaction-level discrepancy delta breaks its type's rules.
@@ -120,9 +120,8 @@ hem 20.000 işlemde geçer.
 ### Benchmark sınırı
 
 Veri sentetiktir, uyuşmazlıklar bilerek enjekte edilmiştir. Üretici kod aynı depodadır ve
-çalıştırma seed'li olduğu için birebir tekrarlanabilir. Arkasında gerçek müşteri verisiyle üretim
-kullanımı yok. Gösterdiği şey motorun davranışıdır ve bunu tek komutla kendiniz
-doğrulayabilirsiniz.
+çalıştırma seed'li olduğu için birebir tekrarlanabilir. Gösterdiği şey motorun davranışıdır ve
+bunu tek komutla kendiniz doğrulayabilirsiniz.
 
 Üreticinin ilk sürümü her açık satırı diğerlerinin penceresinden uzak tutuyordu ve benchmark
 iki satırın aynı anda uyduğu durumu hiç görmedi. Kamuya açık gerçek veri gösterdi: bir

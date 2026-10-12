@@ -125,8 +125,9 @@ emitted differs from expected.</p>
 <p class="boundary"><b>Limits of this run.</b>
 The book is synthetic. It is generated in-process by <code>internal/generator</code>, which also
 supplies the ground truth used to score the result, so anyone can reproduce the claim: the same seed
-produces the same book and the same numbers. The figures measure the engine's behaviour on this book
-and say nothing about production use on real bank data. The book contains, on purpose, the cases
+produces the same book and the same numbers. The figures measure the engine's behaviour on this
+book; the repository's <code>docs/real-data.md</code> has its runs on real records. The book contains,
+on purpose, the cases
 that no evidence can settle: equal orders paid by equal unreferenced lines, checks of one amount that
 clear late, payouts that two sets of orders add up to. Their rows are injected as ambiguous, and the
 run fails if any of them is matched. Apart from those cases the open rows of different injections are

@@ -115,9 +115,9 @@ for s in $(seq 1 100); do go run ./cmd/benchmark -n 20000 -seed "$s" > /dev/null
 ### Benchmark boundary
 
 The data is synthetic and the discrepancies are injected on purpose. The generator and the injection code
-are in this repository (`internal/generator`). The benchmark measures how the engine behaves on that data; it
-says nothing about production performance on customer data. Every produced match is checked member by
-member against the generator's intended pairing, and the run above found 0 false matches.
+are in this repository (`internal/generator`). The benchmark measures how the engine behaves on that data;
+its runs on real records are under "Real data" below. Every produced match is checked member by member
+against the generator's intended pairing, and the run above found 0 false matches.
 
 The generator also builds the hard cases on purpose, each in a fixed share of the book:
 
@@ -140,9 +140,8 @@ book.
 The engine has also been run on five public datasets that carry their own ground truth: a bank's
 ledger against its statement (BenchRec), marketplace orders against their payments (Olist), a county's
 checks against their clearance (Fulton County, Georgia), federal accruals against their payments
-(Brazil) and a city's invoices against the checks that paid them (Baltimore). None of them is a
-merchant's PSP, bank and marketplace books together. Precision is the share of the engine's matches
-that the dataset's own links confirm; the last column is the engine before the rules in
+(Brazil) and a city's invoices against the checks that paid them (Baltimore). Precision is the share
+of the engine's matches that the dataset's own links confirm; the last column is the engine before the rules in
 [ADR 0006](docs/adr/0006-match-only-on-sufficient-evidence.md), on the same files.
 
 | Data | Matches | False | Precision | Before |

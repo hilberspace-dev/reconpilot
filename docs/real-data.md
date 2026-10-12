@@ -2,8 +2,7 @@
 
 The benchmark in the README is synthetic. To see how the engine behaves on books it was not built for,
 it was run on five public datasets that carry their own ground truth: which rows the institution
-linked. None of them is a merchant's PSP report, bank statement and marketplace payouts together; no
-such public dataset was found. None of the data is in this repository.
+linked. None of the data is in this repository.
 
 ## How the numbers are scored
 
@@ -133,6 +132,7 @@ of reach, and another set of the same supplier's invoices adds up to the check t
 
 ## What these runs do not show
 
-- They are not customer data. Real merchant books need a pilot with a merchant or an accountant.
+- The sets come from a bank, a marketplace and public bodies. PSP settlement files and Turkish bank
+  statement formats are not among them.
 - Truth comes from the publishers. BenchRec states its own label error rate; the others state none.
 - The converters are not in this repository; the mappings above are the whole of what they do.
